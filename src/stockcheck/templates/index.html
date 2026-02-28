@@ -240,8 +240,17 @@
 
     async function postForm(url, formData) {
       const res = await fetch(url, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data));
+      const raw = await res.text();
+      let data = null;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch (_err) {
+        data = { raw };
+      }
+      if (!res.ok) {
+        const detail = data && data.raw ? data.raw : JSON.stringify(data);
+        throw new Error(`HTTP ${res.status} ${res.statusText}: ${detail}`);
+      }
       return data;
     }
 
@@ -340,7 +349,12 @@
         renderResults(discovered);
         out.textContent = JSON.stringify({ found: discovered.length, errors: data.errors || [] }, null, 2);
       } catch (err) {
-        out.textContent = String(err);
+        const msg = String(err);
+        if (msg.includes('HTTP 404')) {
+          out.textContent = `${msg}\n\nYour running backend does not have /discover. Restart stockcheck web from the updated project.`;
+        } else {
+          out.textContent = msg;
+        }
       }
     });
 
