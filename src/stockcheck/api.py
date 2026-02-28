@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,7 +12,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from stockcheck.discovery import ProductDiscoveryService
 from stockcheck.models import AppConfig
-from stockcheck.runner import StockCheckerService
 from stockcheck.state import StateStore
 from stockcheck.tickets import TicketSearchService
 
@@ -181,20 +182,27 @@ def check_now(dry_run: bool = Form(default=True)) -> JSONResponse:
 
     raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     config = AppConfig.model_validate(raw)
-    service = StockCheckerService(config=config, dry_run=dry_run, headless=True)
-    records = service.run_once()
+    cmd = [sys.executable, "-m", "stockcheck.cli", "once", "--config", str(CONFIG_PATH)]
+    if dry_run:
+        cmd.append("--dry-run")
 
-    checks = [
-        {
-            "retailer": r.retailer,
-            "label": r.label,
-            "store_id": r.store_id,
-            "store_name": r.store_name,
-            "status": r.status.value,
-            "item_key": r.item_key,
-        }
-        for r in records
-    ]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "stock check failed").strip()
+        raise HTTPException(status_code=500, detail=detail[-1500:])
+
+    status_path = Path(config.status_json)
+    if not status_path.exists():
+        raise HTTPException(status_code=500, detail=f"Status file not found: {status_path}")
+    rows = json.loads(status_path.read_text(encoding="utf-8"))
+
+    checks = rows
     in_stock_count = sum(1 for r in checks if r["status"] == "in_stock")
     return JSONResponse(
         {
