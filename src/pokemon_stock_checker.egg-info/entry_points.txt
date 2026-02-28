@@ -1,2 +1,0 @@
-[console_scripts]
-stockcheck = stockcheck.cli:main
