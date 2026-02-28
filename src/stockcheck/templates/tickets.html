@@ -151,6 +151,10 @@
             <input id="query" name="query" placeholder="Taylor Swift, Metallica, Coachella" />
           </div>
           <div>
+            <label for="event_id">Ticketmaster Event ID (optional)</label>
+            <input id="event_id" name="event_id" placeholder="G5vYZ9..." />
+          </div>
+          <div>
             <label for="zip_code">ZIP code</label>
             <input id="zip_code" name="zip_code" value="21032" />
           </div>
@@ -170,6 +174,14 @@
               <option value="30">30</option>
               <option value="50">50</option>
             </select>
+          </div>
+          <div>
+            <label for="section_query">Section filter (optional)</label>
+            <input id="section_query" name="section_query" placeholder="Section 102, Floor, GA" />
+          </div>
+          <div>
+            <label for="max_price">Max price (optional)</label>
+            <input id="max_price" name="max_price" type="number" min="1" step="1" placeholder="200" />
           </div>
           <div>
             <label for="price_filter">Price filter</label>
@@ -283,12 +295,16 @@
       try {
         const fd = new FormData();
         const query = document.getElementById('query').value.trim();
-        if (!query) throw new Error('Enter an artist or event name.');
+        const eventId = document.getElementById('event_id').value.trim();
+        if (!query && !eventId) throw new Error('Enter an artist/event name or a Ticketmaster event ID.');
 
         fd.set('query', query);
+        fd.set('event_id', eventId);
         fd.set('zip_code', document.getElementById('zip_code').value.trim());
         fd.set('date_from', document.getElementById('date_from').value || '');
         fd.set('date_to', document.getElementById('date_to').value || '');
+        fd.set('section_query', document.getElementById('section_query').value.trim() || '');
+        fd.set('max_price', document.getElementById('max_price').value.trim() || '');
         fd.set('limit', document.getElementById('limit').value);
         fd.set('include_ticketmaster', document.getElementById('include_ticketmaster').checked ? 'true' : 'false');
         fd.set('include_seatgeek', document.getElementById('include_seatgeek').checked ? 'true' : 'false');

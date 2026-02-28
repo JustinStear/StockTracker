@@ -216,10 +216,13 @@ def check_now(dry_run: bool = Form(default=True)) -> JSONResponse:
 
 @app.post("/tickets/search")
 def tickets_search(
-    query: str = Form(...),
+    query: str = Form(default=""),
     zip_code: str = Form(default="21032"),
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
+    event_id: str = Form(default=""),
+    section_query: str = Form(default=""),
+    max_price: str = Form(default=""),
     include_ticketmaster: bool = Form(default=True),
     include_seatgeek: bool = Form(default=True),
     include_stubhub: bool = Form(default=True),
@@ -234,12 +237,22 @@ def tickets_search(
     if not zip_value:
         raise HTTPException(status_code=400, detail="ZIP code is required")
 
+    parsed_max_price: float | None = None
+    if max_price.strip():
+        try:
+            parsed_max_price = float(max_price)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="max_price must be numeric") from exc
+
     service = TicketSearchService()
     response = service.search(
         query=query,
         zip_code=zip_value,
         date_from=date_from.strip() or None,
         date_to=date_to.strip() or None,
+        event_id=event_id.strip() or None,
+        section_query=section_query.strip() or None,
+        max_price=parsed_max_price,
         include_ticketmaster=include_ticketmaster,
         include_seatgeek=include_seatgeek,
         include_stubhub=include_stubhub,

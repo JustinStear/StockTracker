@@ -13,7 +13,7 @@ Local Pokemon TCG stock checker plus a concert ticket metasearch page.
 - CLI modes: one-shot and daemon (`stockcheck once`, `stockcheck run`)
 - Web UI (`stockcheck web`) with:
   - `/pokemon` for product stock checks
-  - `/tickets` for concert ticket metasearch
+  - `/tickets` for concert ticket metasearch (artist/event, Ticketmaster event ID, section and price filters)
 - Keyword-based product discovery in web UI (select products instead of writing JSON)
 - Transition-based alerts: only alerts on `OUT_OF_STOCK/UNKNOWN -> IN_STOCK`
 - Persistent SQLite state cache

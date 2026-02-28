@@ -40,6 +40,9 @@ class TicketSearchService:
         zip_code: str,
         date_from: str | None,
         date_to: str | None,
+        event_id: str | None,
+        section_query: str | None,
+        max_price: float | None,
         include_ticketmaster: bool,
         include_seatgeek: bool,
         include_stubhub: bool,
@@ -51,41 +54,74 @@ class TicketSearchService:
         limit: int = 20,
     ) -> TicketSearchResponse:
         cleaned_query = query.strip()
-        if not cleaned_query:
+        cleaned_event_id = (event_id or "").strip()
+        if not cleaned_query and not cleaned_event_id:
             return TicketSearchResponse(results=[], errors=["query is required"])
 
         results: list[TicketResult] = []
         errors: list[str] = []
+        section_term = (section_query or "").strip().lower()
+        effective_query = " ".join(x for x in [cleaned_query, section_term] if x).strip()
+        event_id_only_mode = bool(cleaned_event_id and not cleaned_query)
 
         if include_ticketmaster:
             api_key = os.getenv("TICKETMASTER_API_KEY")
             if api_key:
                 try:
-                    results.extend(
-                        self._search_ticketmaster(
-                            api_key=api_key,
-                            query=cleaned_query,
-                            zip_code=zip_code,
-                            date_from=date_from,
-                            date_to=date_to,
-                            limit=limit,
+                    if cleaned_event_id:
+                        results.extend(self._event_ticketmaster(api_key=api_key, event_id=cleaned_event_id))
+                    else:
+                        results.extend(
+                            self._search_ticketmaster(
+                                api_key=api_key,
+                                query=effective_query or cleaned_query,
+                                zip_code=zip_code,
+                                date_from=date_from,
+                                date_to=date_to,
+                                limit=limit,
+                            )
                         )
-                    )
                 except requests.RequestException as exc:
                     errors.append(f"ticketmaster: {exc}")
             else:
                 # No key: still provide a search-link style result.
-                results.extend(self._search_public_provider("ticketmaster", cleaned_query, zip_code, date_from, date_to, limit_per_source=3, fallback_only=True))
+                if cleaned_event_id:
+                    results.append(
+                        TicketResult(
+                            source="ticketmaster",
+                            event_name=f"Ticketmaster event {cleaned_event_id}",
+                            venue="",
+                            event_date=date_from or "",
+                            city=zip_code,
+                            min_price=None,
+                            max_price=None,
+                            currency=None,
+                            url=f"https://www.ticketmaster.com/event/{cleaned_event_id}",
+                            availability="search_link",
+                        )
+                    )
+                else:
+                    results.extend(
+                        self._search_public_provider(
+                            "ticketmaster",
+                            effective_query or cleaned_query,
+                            zip_code,
+                            date_from,
+                            date_to,
+                            limit_per_source=3,
+                            fallback_only=True,
+                        )
+                    )
                 errors.append("ticketmaster: API key not set; using public search fallback")
 
-        if include_seatgeek:
+        if include_seatgeek and not event_id_only_mode:
             client_id = os.getenv("SEATGEEK_CLIENT_ID")
             if client_id:
                 try:
                     results.extend(
                         self._search_seatgeek(
                             client_id=client_id,
-                            query=cleaned_query,
+                            query=effective_query or cleaned_query,
                             zip_code=zip_code,
                             date_from=date_from,
                             date_to=date_to,
@@ -95,7 +131,17 @@ class TicketSearchService:
                 except requests.RequestException as exc:
                     errors.append(f"seatgeek: {exc}")
             else:
-                results.extend(self._search_public_provider("seatgeek", cleaned_query, zip_code, date_from, date_to, limit_per_source=3, fallback_only=True))
+                results.extend(
+                    self._search_public_provider(
+                        "seatgeek",
+                        effective_query or cleaned_query,
+                        zip_code,
+                        date_from,
+                        date_to,
+                        limit_per_source=3,
+                        fallback_only=True,
+                    )
+                )
                 errors.append("seatgeek: client id not set; using public search fallback")
 
         public_sources = [
@@ -107,13 +153,15 @@ class TicketSearchService:
             (include_gametime, "gametime"),
         ]
         for enabled, source in public_sources:
+            if event_id_only_mode:
+                continue
             if not enabled:
                 continue
             try:
                 results.extend(
                     self._search_public_provider(
                         source=source,
-                        query=cleaned_query,
+                        query=effective_query or cleaned_query,
                         zip_code=zip_code,
                         date_from=date_from,
                         date_to=date_to,
@@ -122,9 +170,21 @@ class TicketSearchService:
                 )
             except requests.RequestException as exc:
                 errors.append(f"{source}: {exc}")
-                results.append(self._search_link_result(source, cleaned_query, zip_code, date_from, date_to))
+                results.append(
+                    self._search_link_result(
+                        source,
+                        effective_query or cleaned_query,
+                        zip_code,
+                        date_from,
+                        date_to,
+                    )
+                )
 
         deduped = self._dedupe_results(results)
+        if section_term:
+            deduped = [r for r in deduped if self._matches_section(r, section_term)]
+        if max_price is not None:
+            deduped = [r for r in deduped if r.min_price is None or r.min_price <= max_price]
         deduped.sort(key=lambda r: (r.min_price is None, r.min_price or float("inf"), r.event_date, r.source))
         return TicketSearchResponse(results=deduped[:limit], errors=errors)
 
@@ -187,6 +247,42 @@ class TicketSearchService:
                 )
             )
         return out
+
+    def _event_ticketmaster(self, api_key: str, event_id: str) -> list[TicketResult]:
+        response = requests.get(
+            f"https://app.ticketmaster.com/discovery/v2/events/{event_id}.json",
+            params={"apikey": api_key},
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        event = response.json()
+        price_ranges = event.get("priceRanges") or []
+        min_price = price_ranges[0].get("min") if price_ranges else None
+        max_price = price_ranges[0].get("max") if price_ranges else None
+        currency = price_ranges[0].get("currency") if price_ranges else None
+        venue = ""
+        city = ""
+        venues = event.get("_embedded", {}).get("venues", [])
+        if venues:
+            venue = venues[0].get("name", "")
+            city = venues[0].get("city", {}).get("name", "")
+
+        return [
+            TicketResult(
+                source="ticketmaster",
+                event_name=event.get("name", f"Ticketmaster event {event_id}"),
+                venue=venue,
+                event_date=event.get("dates", {}).get("start", {}).get("localDate", ""),
+                city=city,
+                min_price=float(min_price) if min_price is not None else None,
+                max_price=float(max_price) if max_price is not None else None,
+                currency=currency,
+                url=event.get("url", f"https://www.ticketmaster.com/event/{event_id}"),
+                availability="available"
+                if event.get("dates", {}).get("status", {}).get("code") != "offsale"
+                else "sold_out",
+            )
+        ]
 
     def _search_seatgeek(
         self,
@@ -447,3 +543,7 @@ class TicketSearchService:
             seen.add(key)
             out.append(row)
         return out
+
+    def _matches_section(self, row: TicketResult, section_term: str) -> bool:
+        blob = " ".join([row.event_name, row.venue, row.url]).lower()
+        return section_term in blob
