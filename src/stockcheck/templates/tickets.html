@@ -188,6 +188,10 @@
             <input id="date_to" name="date_to" type="date" />
           </div>
           <div>
+            <label for="venue_query">Venue / City filter (optional)</label>
+            <input id="venue_query" name="venue_query" placeholder="Bristow, VA" />
+          </div>
+          <div>
             <label for="limit">Max results</label>
             <select id="limit" name="limit">
               <option value="10">10</option>
@@ -216,8 +220,8 @@
         </div>
 
         <div class="providers">
-          <label><input id="include_ticketmaster" type="checkbox" checked />Ticketmaster (API)</label>
-          <label><input id="include_seatgeek" type="checkbox" checked />SeatGeek (API)</label>
+          <label><input id="include_ticketmaster" type="checkbox" checked />Ticketmaster</label>
+          <label><input id="include_seatgeek" type="checkbox" checked />SeatGeek</label>
           <label><input id="include_stubhub" type="checkbox" checked />StubHub</label>
           <label><input id="include_vividseats" type="checkbox" checked />Vivid Seats</label>
           <label><input id="include_tickpick" type="checkbox" checked />TickPick</label>
@@ -330,6 +334,7 @@
         fd.set('radius_miles', document.getElementById('radius_miles').value.trim() || '50');
         fd.set('date_from', document.getElementById('date_from').value || '');
         fd.set('date_to', document.getElementById('date_to').value || '');
+        fd.set('venue_query', document.getElementById('venue_query').value.trim() || '');
         fd.set('section_query', document.getElementById('section_query').value.trim() || '');
         fd.set('max_price', document.getElementById('max_price').value.trim() || '');
         fd.set('limit', document.getElementById('limit').value);

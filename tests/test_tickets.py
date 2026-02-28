@@ -3,9 +3,8 @@ from stockcheck.tickets import TicketResult, TicketSearchService
 
 def test_ticket_search_sorts_by_known_min_price(monkeypatch) -> None:
     svc = TicketSearchService()
-    monkeypatch.setenv("TICKETMASTER_API_KEY", "test-key")
 
-    def fake_tm(*args, **kwargs):
+    def fake_public(*args, **kwargs):
         del args, kwargs
         return [
             TicketResult(
@@ -34,7 +33,7 @@ def test_ticket_search_sorts_by_known_min_price(monkeypatch) -> None:
             ),
         ]
 
-    monkeypatch.setattr(svc, "_search_ticketmaster", fake_tm)
+    monkeypatch.setattr(svc, "_search_public_provider", fake_public)
 
     result = svc.search(
         query="test",
@@ -43,6 +42,7 @@ def test_ticket_search_sorts_by_known_min_price(monkeypatch) -> None:
         date_from=None,
         date_to=None,
         event_id=None,
+        venue_query=None,
         section_query=None,
         max_price=None,
         include_ticketmaster=True,
@@ -50,6 +50,9 @@ def test_ticket_search_sorts_by_known_min_price(monkeypatch) -> None:
         include_stubhub=False,
         include_vividseats=False,
         include_tickpick=False,
+        include_livenation=False,
+        include_axs=False,
+        include_gametime=False,
         limit=10,
     )
 
@@ -66,6 +69,7 @@ def test_ticket_search_generates_stubhub_link() -> None:
         date_from=None,
         date_to=None,
         event_id=None,
+        venue_query=None,
         section_query=None,
         max_price=None,
         include_ticketmaster=False,
@@ -125,6 +129,7 @@ def test_ticket_search_section_and_max_price_filters() -> None:
         date_from=None,
         date_to=None,
         event_id=None,
+        venue_query=None,
         section_query="102",
         max_price=200,
         include_ticketmaster=False,
