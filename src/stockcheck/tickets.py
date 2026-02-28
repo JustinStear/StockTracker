@@ -5,7 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote, urlparse
 
 import requests
 
@@ -379,11 +379,12 @@ class TicketSearchService:
         date_hint = ""
         if date_from or date_to:
             date_hint = f" {date_from or ''} {date_to or ''}".strip()
-        radius_hint = f" within {radius_miles} miles" if radius_miles else ""
-        q = quote_plus(f"{query} {zip_code}{radius_hint} {date_hint}".strip())
+        # Public search URLs are more reliable with the core artist/event query only.
+        del zip_code, radius_miles
+        q = quote_plus(f"{query} {date_hint}".strip())
 
         if source == "stubhub":
-            return f"https://www.stubhub.com/find/s/?q={q}"
+            return f"https://www.stubhub.com/search?search={q}"
         if source == "vividseats":
             return f"https://www.vividseats.com/search?searchTerm={q}"
         if source == "tickpick":
@@ -419,6 +420,8 @@ class TicketSearchService:
             "ticketmaster": "Ticketmaster search",
             "seatgeek": "SeatGeek search",
         }.get(source, f"{source} search")
+        primary_url = self._provider_search_url(source, query, zip_code, radius_miles, date_from, date_to)
+        url = self._choose_best_link(source=source, query=query, primary_url=primary_url)
         return TicketResult(
             source=source,
             event_name=label,
@@ -428,7 +431,7 @@ class TicketSearchService:
             min_price=None,
             max_price=None,
             currency=None,
-            url=self._provider_search_url(source, query, zip_code, radius_miles, date_from, date_to),
+            url=url,
             availability="search_link",
         )
 
@@ -559,6 +562,76 @@ class TicketSearchService:
             seen.add(key)
             out.append(row)
         return out
+
+    def _choose_best_link(self, source: str, query: str, primary_url: str) -> str:
+        if self._link_looks_usable(primary_url):
+            return primary_url
+
+        domain_map = {
+            "stubhub": "stubhub.com",
+            "vividseats": "vividseats.com",
+            "tickpick": "tickpick.com",
+            "livenation": "livenation.com",
+            "axs": "axs.com",
+            "gametime": "gametime.co",
+            "ticketmaster": "ticketmaster.com",
+            "seatgeek": "seatgeek.com",
+        }
+        domain = domain_map.get(source)
+        if domain:
+            discovered = self._duckduckgo_domain_result(query=query, domain=domain)
+            if discovered and self._link_looks_usable(discovered):
+                return discovered
+
+        return primary_url
+
+    def _duckduckgo_domain_result(self, query: str, domain: str) -> str | None:
+        search_url = f"https://duckduckgo.com/html/?q={quote_plus(f'site:{domain} {query} tickets')}"
+        html = self._get_html(search_url)
+        links = re.findall(r'class=\"result__a\" href=\"([^\"]+)\"', html, flags=re.IGNORECASE)
+        for raw in links:
+            decoded = unquote(raw)
+            if "uddg=" in decoded:
+                match = re.search(r"uddg=([^&]+)", decoded)
+                if match:
+                    decoded = unquote(match.group(1))
+            parsed = urlparse(decoded)
+            if parsed.scheme not in {"http", "https"}:
+                continue
+            if domain not in parsed.netloc:
+                continue
+            return decoded
+        return None
+
+    def _link_looks_usable(self, url: str) -> bool:
+        try:
+            response = requests.get(
+                url,
+                timeout=self.timeout_seconds,
+                allow_redirects=True,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux x86_64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0 Safari/537.36"
+                    )
+                },
+            )
+        except requests.RequestException:
+            return False
+
+        if response.status_code >= 400:
+            return False
+
+        text = response.text.lower()
+        bad_markers = [
+            "no results found",
+            "0 results",
+            "we couldn't find",
+            "try a different search",
+            "access denied",
+        ]
+        return not any(marker in text for marker in bad_markers)
 
     def _matches_section(self, row: TicketResult, section_term: str) -> bool:
         blob = " ".join([row.event_name, row.venue, row.url]).lower()

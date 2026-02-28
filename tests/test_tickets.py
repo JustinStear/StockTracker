@@ -58,6 +58,7 @@ def test_ticket_search_sorts_by_known_min_price(monkeypatch) -> None:
 
 def test_ticket_search_generates_stubhub_link() -> None:
     svc = TicketSearchService()
+    svc._choose_best_link = lambda source, query, primary_url: primary_url  # type: ignore[method-assign]
     result = svc.search(
         query="metallica",
         zip_code="21032",
@@ -82,6 +83,7 @@ def test_ticket_search_generates_stubhub_link() -> None:
 
 def test_ticket_search_section_and_max_price_filters() -> None:
     svc = TicketSearchService()
+    svc._choose_best_link = lambda source, query, primary_url: primary_url  # type: ignore[method-assign]
     rows = [
         TicketResult(
             source="stubhub",
