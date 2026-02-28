@@ -218,6 +218,7 @@ def check_now(dry_run: bool = Form(default=True)) -> JSONResponse:
 def tickets_search(
     query: str = Form(default=""),
     zip_code: str = Form(default="21032"),
+    radius_miles: int = Form(default=50),
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
     event_id: str = Form(default=""),
@@ -248,6 +249,7 @@ def tickets_search(
     response = service.search(
         query=query,
         zip_code=zip_value,
+        radius_miles=max(1, min(radius_miles, 250)),
         date_from=date_from.strip() or None,
         date_to=date_to.strip() or None,
         event_id=event_id.strip() or None,

@@ -159,6 +159,10 @@
             <input id="zip_code" name="zip_code" value="21032" />
           </div>
           <div>
+            <label for="radius_miles">Radius (miles)</label>
+            <input id="radius_miles" name="radius_miles" type="number" value="50" min="1" max="250" />
+          </div>
+          <div>
             <label for="date_from">From date</label>
             <input id="date_from" name="date_from" type="date" />
           </div>
@@ -301,6 +305,7 @@
         fd.set('query', query);
         fd.set('event_id', eventId);
         fd.set('zip_code', document.getElementById('zip_code').value.trim());
+        fd.set('radius_miles', document.getElementById('radius_miles').value.trim() || '50');
         fd.set('date_from', document.getElementById('date_from').value || '');
         fd.set('date_to', document.getElementById('date_to').value || '');
         fd.set('section_query', document.getElementById('section_query').value.trim() || '');

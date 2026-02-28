@@ -39,6 +39,7 @@ def test_ticket_search_sorts_by_known_min_price(monkeypatch) -> None:
     result = svc.search(
         query="test",
         zip_code="21032",
+        radius_miles=50,
         date_from=None,
         date_to=None,
         event_id=None,
@@ -60,6 +61,7 @@ def test_ticket_search_generates_stubhub_link() -> None:
     result = svc.search(
         query="metallica",
         zip_code="21032",
+        radius_miles=50,
         date_from=None,
         date_to=None,
         event_id=None,
@@ -117,6 +119,7 @@ def test_ticket_search_section_and_max_price_filters() -> None:
     result = svc.search(
         query="artist",
         zip_code="21032",
+        radius_miles=50,
         date_from=None,
         date_to=None,
         event_id=None,

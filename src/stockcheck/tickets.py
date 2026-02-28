@@ -38,6 +38,7 @@ class TicketSearchService:
         self,
         query: str,
         zip_code: str,
+        radius_miles: int | None,
         date_from: str | None,
         date_to: str | None,
         event_id: str | None,
@@ -76,6 +77,7 @@ class TicketSearchService:
                                 api_key=api_key,
                                 query=effective_query or cleaned_query,
                                 zip_code=zip_code,
+                                radius_miles=radius_miles,
                                 date_from=date_from,
                                 date_to=date_to,
                                 limit=limit,
@@ -123,6 +125,7 @@ class TicketSearchService:
                             client_id=client_id,
                             query=effective_query or cleaned_query,
                             zip_code=zip_code,
+                            radius_miles=radius_miles,
                             date_from=date_from,
                             date_to=date_to,
                             limit=limit,
@@ -163,6 +166,7 @@ class TicketSearchService:
                         source=source,
                         query=effective_query or cleaned_query,
                         zip_code=zip_code,
+                        radius_miles=radius_miles,
                         date_from=date_from,
                         date_to=date_to,
                         limit_per_source=max(2, min(8, limit // 3)),
@@ -175,6 +179,7 @@ class TicketSearchService:
                         source,
                         effective_query or cleaned_query,
                         zip_code,
+                        radius_miles,
                         date_from,
                         date_to,
                     )
@@ -193,6 +198,7 @@ class TicketSearchService:
         api_key: str,
         query: str,
         zip_code: str,
+        radius_miles: int | None,
         date_from: str | None,
         date_to: str | None,
         limit: int,
@@ -205,6 +211,9 @@ class TicketSearchService:
             "size": min(limit, 50),
             "sort": "date,asc",
         }
+        if radius_miles:
+            params["radius"] = max(1, min(radius_miles, 250))
+            params["unit"] = "miles"
         if date_from:
             params["startDateTime"] = f"{date_from}T00:00:00Z"
         if date_to:
@@ -289,6 +298,7 @@ class TicketSearchService:
         client_id: str,
         query: str,
         zip_code: str,
+        radius_miles: int | None,
         date_from: str | None,
         date_to: str | None,
         limit: int,
@@ -300,6 +310,8 @@ class TicketSearchService:
             "per_page": min(limit, 50),
             "sort": "datetime_utc.asc",
         }
+        if radius_miles:
+            params["range"] = f"{max(1, min(radius_miles, 250))}mi"
         if date_from:
             params["datetime_utc.gte"] = f"{date_from}T00:00:00"
         if date_to:
@@ -338,34 +350,37 @@ class TicketSearchService:
         source: str,
         query: str,
         zip_code: str,
+        radius_miles: int | None,
         date_from: str | None,
         date_to: str | None,
         limit_per_source: int,
         fallback_only: bool = False,
     ) -> list[TicketResult]:
-        url = self._provider_search_url(source, query, zip_code, date_from, date_to)
+        url = self._provider_search_url(source, query, zip_code, radius_miles, date_from, date_to)
         if fallback_only:
-            return [self._search_link_result(source, query, zip_code, date_from, date_to)]
+            return [self._search_link_result(source, query, zip_code, radius_miles, date_from, date_to)]
 
         html = self._get_html(url)
         extracted = self._extract_events_from_jsonld(html, source=source, default_city=zip_code)
         if extracted:
             return extracted[:limit_per_source]
 
-        return [self._search_link_result(source, query, zip_code, date_from, date_to)]
+        return [self._search_link_result(source, query, zip_code, radius_miles, date_from, date_to)]
 
     def _provider_search_url(
         self,
         source: str,
         query: str,
         zip_code: str,
+        radius_miles: int | None,
         date_from: str | None,
         date_to: str | None,
     ) -> str:
         date_hint = ""
         if date_from or date_to:
             date_hint = f" {date_from or ''} {date_to or ''}".strip()
-        q = quote_plus(f"{query} {zip_code} {date_hint}".strip())
+        radius_hint = f" within {radius_miles} miles" if radius_miles else ""
+        q = quote_plus(f"{query} {zip_code}{radius_hint} {date_hint}".strip())
 
         if source == "stubhub":
             return f"https://www.stubhub.com/find/s/?q={q}"
@@ -390,6 +405,7 @@ class TicketSearchService:
         source: str,
         query: str,
         zip_code: str,
+        radius_miles: int | None,
         date_from: str | None,
         date_to: str | None,
     ) -> TicketResult:
@@ -412,7 +428,7 @@ class TicketSearchService:
             min_price=None,
             max_price=None,
             currency=None,
-            url=self._provider_search_url(source, query, zip_code, date_from, date_to),
+            url=self._provider_search_url(source, query, zip_code, radius_miles, date_from, date_to),
             availability="search_link",
         )
 
