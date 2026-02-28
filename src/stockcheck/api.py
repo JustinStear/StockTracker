@@ -279,26 +279,29 @@ def tickets_search(
             raise HTTPException(status_code=400, detail="max_price must be numeric") from exc
 
     service = TicketSearchService()
-    response = service.search(
-        query=query,
-        zip_code=zip_value,
-        radius_miles=max(1, min(radius_miles, 250)),
-        date_from=date_from.strip() or None,
-        date_to=date_to.strip() or None,
-        event_id=event_id.strip() or None,
-        venue_query=venue_query.strip() or None,
-        section_query=section_query.strip() or None,
-        max_price=parsed_max_price,
-        include_ticketmaster=include_ticketmaster,
-        include_seatgeek=include_seatgeek,
-        include_stubhub=include_stubhub,
-        include_vividseats=include_vividseats,
-        include_tickpick=include_tickpick,
-        include_livenation=include_livenation,
-        include_axs=include_axs,
-        include_gametime=include_gametime,
-        limit=max(1, min(limit, 100)),
-    )
+    try:
+        response = service.search(
+            query=query,
+            zip_code=zip_value,
+            radius_miles=max(1, min(radius_miles, 250)),
+            date_from=date_from.strip() or None,
+            date_to=date_to.strip() or None,
+            event_id=event_id.strip() or None,
+            venue_query=venue_query.strip() or None,
+            section_query=section_query.strip() or None,
+            max_price=parsed_max_price,
+            include_ticketmaster=include_ticketmaster,
+            include_seatgeek=include_seatgeek,
+            include_stubhub=include_stubhub,
+            include_vividseats=include_vividseats,
+            include_tickpick=include_tickpick,
+            include_livenation=include_livenation,
+            include_axs=include_axs,
+            include_gametime=include_gametime,
+            limit=max(1, min(limit, 100)),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Ticket search failed: {exc}") from exc
 
     return JSONResponse(
         {

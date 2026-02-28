@@ -226,7 +226,11 @@ class TicketSearchService:
             "seatgeek": "SeatGeek search",
         }.get(source, f"{source} search")
         primary_url = self._provider_search_url(source, query, zip_code, radius_miles, date_from, date_to)
-        url = self._choose_best_link(source=source, query=query, primary_url=primary_url)
+        # Never fail the whole request due to provider link discovery issues.
+        try:
+            url = self._choose_best_link(source=source, query=query, primary_url=primary_url)
+        except requests.RequestException:
+            url = primary_url
         return TicketResult(
             source=source,
             event_name=label,
@@ -384,7 +388,10 @@ class TicketSearchService:
         }
         domain = domain_map.get(source)
         if domain:
-            discovered = self._duckduckgo_domain_result(query=query, domain=domain)
+            try:
+                discovered = self._duckduckgo_domain_result(query=query, domain=domain)
+            except requests.RequestException:
+                discovered = None
             if discovered and self._link_looks_usable(discovered):
                 return discovered
 

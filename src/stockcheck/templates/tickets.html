@@ -348,8 +348,20 @@
         fd.set('include_gametime', document.getElementById('include_gametime').checked ? 'true' : 'false');
 
         const res = await fetch('/tickets/search', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (!res.ok) throw new Error(JSON.stringify(data));
+        const raw = await res.text();
+        let data = null;
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch (_err) {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${raw || 'Unknown server error'}`);
+          }
+          throw new Error('Server returned invalid JSON.');
+        }
+        if (!res.ok) {
+          const detail = data && typeof data === 'object' ? (data.detail || JSON.stringify(data)) : raw;
+          throw new Error(`HTTP ${res.status}: ${detail}`);
+        }
 
         out.textContent = JSON.stringify({ count: data.count, errors: data.errors }, null, 2);
         renderResults(data);
