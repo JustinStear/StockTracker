@@ -1,0 +1,13 @@
+services:
+  stockchecker:
+    build: .
+    container_name: stockchecker
+    ports:
+      - "8000:8000"
+    environment:
+      - BESTBUY_API_KEY=${BESTBUY_API_KEY:-}
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./state.sqlite3:/app/state.sqlite3
+      - ./status.json:/app/status.json
+    command: ["stockcheck", "web", "--host", "0.0.0.0", "--port", "8000"]

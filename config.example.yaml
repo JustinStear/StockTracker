@@ -1,0 +1,29 @@
+location:
+  zip: "60007"
+radius_miles: 20
+poll_seconds: 180
+state_db: "state.sqlite3"
+status_json: "status.json"
+alerts:
+  discord_webhook: "https://discord.com/api/webhooks/XXX/YYY"
+watchlist:
+  - retailer: "bestbuy"
+    label: "Scarlet & Violet ETB"
+    identifier:
+      type: "sku"
+      value: "1234567"
+  - retailer: "target"
+    label: "Target Product"
+    identifier:
+      type: "url"
+      value: "https://www.target.com/p/..."
+  - retailer: "walmart"
+    label: "Walmart Tin"
+    identifier:
+      type: "url"
+      value: "https://www.walmart.com/ip/..."
+  - retailer: "gamestop"
+    label: "GameStop Bundle"
+    identifier:
+      type: "url"
+      value: "https://www.gamestop.com/..."

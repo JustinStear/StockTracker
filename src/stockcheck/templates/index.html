@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pokemon Stock Checker</title>
+  <style>
+    :root {
+      --bg: #f4f2ea;
+      --ink: #1f2a24;
+      --panel: #ffffff;
+      --accent: #0b6b56;
+      --muted: #64706b;
+      --warn: #8a2f00;
+      --ring: #b9d8cc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: radial-gradient(circle at top right, #d9efe5, var(--bg) 45%), var(--bg);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 24px auto;
+      padding: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid #d5ddd9;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 8px 28px rgba(18, 24, 21, 0.08);
+    }
+    h1 { margin-top: 0; letter-spacing: 0.2px; }
+    p { color: var(--muted); }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    label { font-size: 14px; display: block; margin-bottom: 4px; }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #c4d0ca;
+      border-radius: 8px;
+      font: inherit;
+      background: #fff;
+    }
+    input:focus, textarea:focus {
+      outline: 2px solid var(--ring);
+      border-color: var(--accent);
+    }
+    textarea { min-height: 180px; }
+    .btns { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.secondary { background: #49635a; }
+    .note {
+      border-left: 4px solid var(--warn);
+      padding-left: 10px;
+      margin-top: 12px;
+      color: #5f4a37;
+      font-size: 14px;
+    }
+    pre {
+      background: #142019;
+      color: #d9f2e8;
+      padding: 10px;
+      border-radius: 8px;
+      overflow: auto;
+      font-size: 12px;
+      min-height: 80px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Pokemon Stock Checker</h1>
+      <p>Set your watch variables, save config, then run a check. This only checks stock signals and does not automate checkout.</p>
+      <form id="cfg">
+        <div class="grid">
+          <div>
+            <label for="zip_code">ZIP code</label>
+            <input id="zip_code" name="zip_code" placeholder="60007" />
+          </div>
+          <div>
+            <label for="lat">Latitude (if no ZIP)</label>
+            <input id="lat" name="lat" placeholder="42.0000" />
+          </div>
+          <div>
+            <label for="lon">Longitude (if no ZIP)</label>
+            <input id="lon" name="lon" placeholder="-88.0000" />
+          </div>
+          <div>
+            <label for="radius_miles">Radius (miles)</label>
+            <input id="radius_miles" name="radius_miles" type="number" value="20" min="1" />
+          </div>
+          <div>
+            <label for="poll_seconds">Poll seconds (>=120)</label>
+            <input id="poll_seconds" name="poll_seconds" type="number" value="180" min="120" />
+          </div>
+          <div>
+            <label for="discord_webhook">Discord webhook</label>
+            <input id="discord_webhook" name="discord_webhook" placeholder="https://discord.com/api/webhooks/..." />
+          </div>
+        </div>
+        <div>
+          <label for="watchlist_json">Watchlist JSON</label>
+          <textarea id="watchlist_json" name="watchlist_json">[
+  {
+    "retailer": "bestbuy",
+    "label": "Scarlet & Violet ETB",
+    "identifier": {"type": "sku", "value": "1234567"}
+  },
+  {
+    "retailer": "target",
+    "label": "Target Product",
+    "identifier": {"type": "url", "value": "https://www.target.com/p/..."}
+  }
+]</textarea>
+        </div>
+        <div class="btns">
+          <button type="submit">Save Config</button>
+          <button class="secondary" id="checkBtn" type="button">Check Now (Dry Run)</button>
+        </div>
+      </form>
+      <div class="note">Guardrails: no checkout automation, no CAPTCHA bypass, no anti-bot evasion.</div>
+      <h3>Result</h3>
+      <pre id="out">Ready.</pre>
+    </div>
+  </div>
+
+  <script>
+    const out = document.getElementById('out');
+    const form = document.getElementById('cfg');
+
+    async function postForm(url, extra = null) {
+      const fd = new FormData(form);
+      if (extra) {
+        Object.entries(extra).forEach(([k, v]) => fd.set(k, v));
+      }
+      const res = await fetch(url, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(JSON.stringify(data));
+      return data;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      out.textContent = 'Saving config...';
+      try {
+        const data = await postForm('/save-config');
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = String(err);
+      }
+    });
+
+    document.getElementById('checkBtn').addEventListener('click', async () => {
+      out.textContent = 'Running check...';
+      try {
+        await postForm('/save-config');
+        const data = await postForm('/check-now', { dry_run: 'true' });
+        out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        out.textContent = String(err);
+      }
+    });
+  </script>
+</body>
+</html>
