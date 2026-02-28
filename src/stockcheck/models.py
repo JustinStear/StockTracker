@@ -29,7 +29,7 @@ class Identifier(BaseModel):
 
 
 class WatchItem(BaseModel):
-    retailer: Literal["bestbuy", "target", "walmart", "gamestop"]
+    retailer: Literal["target", "walmart", "gamestop"]
     label: str
     identifier: Identifier
 

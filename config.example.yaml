@@ -7,11 +7,6 @@ status_json: "status.json"
 alerts:
   discord_webhook: "https://discord.com/api/webhooks/XXX/YYY"
 watchlist:
-  - retailer: "bestbuy"
-    label: "Scarlet & Violet ETB"
-    identifier:
-      type: "sku"
-      value: "1234567"
   - retailer: "target"
     label: "Target Product"
     identifier:

@@ -12,6 +12,7 @@ from stockcheck.discovery import ProductDiscoveryService
 from stockcheck.models import AppConfig
 from stockcheck.runner import StockCheckerService
 from stockcheck.state import StateStore
+from stockcheck.tickets import TicketSearchService
 
 LOG = logging.getLogger(__name__)
 
@@ -23,6 +24,10 @@ CONFIG_PATH = ROOT / "config.yaml"
 
 def _load_form_html() -> str:
     return (Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+
+def _load_tickets_html() -> str:
+    return (Path(__file__).parent / "templates" / "tickets.html").read_text(encoding="utf-8")
 
 
 def _build_config_from_form(
@@ -63,6 +68,16 @@ def _build_config_from_form(
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return _load_form_html()
+
+
+@app.get("/pokemon", response_class=HTMLResponse)
+def pokemon_page() -> str:
+    return _load_form_html()
+
+
+@app.get("/tickets", response_class=HTMLResponse)
+def tickets_page() -> str:
+    return _load_tickets_html()
 
 
 @app.get("/health")
@@ -116,15 +131,12 @@ def save_config(
 @app.post("/discover")
 def discover_products(
     keyword: str = Form(...),
-    include_bestbuy: bool = Form(default=True),
     include_target: bool = Form(default=True),
     include_walmart: bool = Form(default=True),
     include_gamestop: bool = Form(default=True),
     limit_per_retailer: int = Form(default=6),
 ) -> JSONResponse:
     retailers: list[str] = []
-    if include_bestbuy:
-        retailers.append("bestbuy")
     if include_target:
         retailers.append("target")
     if include_walmart:
@@ -190,5 +202,61 @@ def check_now(dry_run: bool = Form(default=True)) -> JSONResponse:
             "count": len(checks),
             "in_stock_count": in_stock_count,
             "checks": checks,
+        }
+    )
+
+
+@app.post("/tickets/search")
+def tickets_search(
+    query: str = Form(...),
+    zip_code: str = Form(default="21032"),
+    date_from: str = Form(default=""),
+    date_to: str = Form(default=""),
+    include_ticketmaster: bool = Form(default=True),
+    include_seatgeek: bool = Form(default=True),
+    include_stubhub: bool = Form(default=True),
+    include_vividseats: bool = Form(default=True),
+    include_tickpick: bool = Form(default=True),
+    limit: int = Form(default=30),
+) -> JSONResponse:
+    zip_value = zip_code.strip()
+    if not zip_value:
+        raise HTTPException(status_code=400, detail="ZIP code is required")
+
+    service = TicketSearchService()
+    response = service.search(
+        query=query,
+        zip_code=zip_value,
+        date_from=date_from.strip() or None,
+        date_to=date_to.strip() or None,
+        include_ticketmaster=include_ticketmaster,
+        include_seatgeek=include_seatgeek,
+        include_stubhub=include_stubhub,
+        include_vividseats=include_vividseats,
+        include_tickpick=include_tickpick,
+        limit=max(1, min(limit, 100)),
+    )
+
+    return JSONResponse(
+        {
+            "query": query,
+            "zip_code": zip_value,
+            "count": len(response.results),
+            "errors": response.errors,
+            "results": [
+                {
+                    "source": r.source,
+                    "event_name": r.event_name,
+                    "venue": r.venue,
+                    "event_date": r.event_date,
+                    "city": r.city,
+                    "min_price": r.min_price,
+                    "max_price": r.max_price,
+                    "currency": r.currency,
+                    "url": r.url,
+                    "availability": r.availability,
+                }
+                for r in response.results
+            ],
         }
     )

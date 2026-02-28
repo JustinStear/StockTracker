@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Concert Ticket Checker</title>
+  <style>
+    :root {
+      --bg: #f4f2ea;
+      --ink: #1f2a24;
+      --panel: #ffffff;
+      --accent: #0b6b56;
+      --muted: #64706b;
+      --ring: #b9d8cc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: radial-gradient(circle at top right, #d9efe5, var(--bg) 45%), var(--bg);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+    .wrap {
+      max-width: 1080px;
+      margin: 24px auto;
+      padding: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid #d5ddd9;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 8px 28px rgba(18, 24, 21, 0.08);
+    }
+    .nav {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .nav a {
+      text-decoration: none;
+      color: #104637;
+      border: 1px solid #c4d0ca;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      background: #eef5f1;
+    }
+    .nav a.active {
+      background: #0b6b56;
+      color: #fff;
+      border-color: #0b6b56;
+    }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    label { font-size: 14px; display: block; margin-bottom: 4px; }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #c4d0ca;
+      border-radius: 8px;
+      font: inherit;
+      background: #fff;
+    }
+    input:focus, select:focus {
+      outline: 2px solid var(--ring);
+      border-color: var(--accent);
+    }
+    .providers {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .providers label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: white;
+      padding: 10px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    pre {
+      background: #142019;
+      color: #d9f2e8;
+      padding: 10px;
+      border-radius: 8px;
+      overflow: auto;
+      font-size: 12px;
+      min-height: 80px;
+      margin-top: 12px;
+    }
+    .results {
+      margin-top: 12px;
+      border: 1px solid #d5ddd9;
+      border-radius: 10px;
+      padding: 10px;
+      max-height: 420px;
+      overflow: auto;
+      background: #fbfcfb;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 8px;
+      border-bottom: 1px solid #d5ddd9;
+      text-align: left;
+      font-size: 13px;
+      vertical-align: top;
+    }
+    .small { color: var(--muted); font-size: 12px; }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #eceff4;
+      color: #334155;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="nav">
+        <a href="/pokemon">Pokemon</a>
+        <a class="active" href="/tickets">Concert Tickets</a>
+      </div>
+      <h1>Concert Ticket Search</h1>
+      <p class="small">Metasearch style view across ticket providers. API-backed sources show live prices when configured.</p>
+
+      <form id="ticketForm">
+        <div class="grid">
+          <div>
+            <label for="query">Artist / Event</label>
+            <input id="query" name="query" placeholder="Taylor Swift, Metallica, Coachella" />
+          </div>
+          <div>
+            <label for="zip_code">ZIP code</label>
+            <input id="zip_code" name="zip_code" value="21032" />
+          </div>
+          <div>
+            <label for="date_from">From date</label>
+            <input id="date_from" name="date_from" type="date" />
+          </div>
+          <div>
+            <label for="date_to">To date</label>
+            <input id="date_to" name="date_to" type="date" />
+          </div>
+          <div>
+            <label for="limit">Max results</label>
+            <select id="limit" name="limit">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="30">30</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+          <div>
+            <label for="price_filter">Price filter</label>
+            <select id="price_filter">
+              <option value="all" selected>Show all</option>
+              <option value="priced_only">Only with known prices</option>
+              <option value="under_100">Under $100</option>
+              <option value="under_200">Under $200</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="providers">
+          <label><input id="include_ticketmaster" type="checkbox" checked />Ticketmaster (API)</label>
+          <label><input id="include_seatgeek" type="checkbox" checked />SeatGeek (API)</label>
+          <label><input id="include_stubhub" type="checkbox" checked />StubHub</label>
+          <label><input id="include_vividseats" type="checkbox" checked />Vivid Seats</label>
+          <label><input id="include_tickpick" type="checkbox" checked />TickPick</label>
+        </div>
+
+        <button type="submit">Search Tickets</button>
+      </form>
+
+      <pre id="out">Ready.</pre>
+      <div id="results" class="results">
+        <div class="small">Search for an artist or event to see aggregated ticket results.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('ticketForm');
+    const out = document.getElementById('out');
+    const resultsEl = document.getElementById('results');
+    const priceFilterEl = document.getElementById('price_filter');
+    let lastPayload = null;
+
+    function fmtPrice(minPrice, maxPrice, currency) {
+      if (minPrice === null || minPrice === undefined) return 'N/A';
+      const cur = currency || 'USD';
+      if (maxPrice === null || maxPrice === undefined || minPrice === maxPrice) {
+        return `${cur} ${Number(minPrice).toFixed(2)}`;
+      }
+      return `${cur} ${Number(minPrice).toFixed(2)} - ${Number(maxPrice).toFixed(2)}`;
+    }
+
+    function applyPriceFilter(results) {
+      const mode = priceFilterEl.value;
+      if (mode === 'priced_only') {
+        return results.filter((r) => r.min_price !== null);
+      }
+      if (mode === 'under_100') {
+        return results.filter((r) => r.min_price !== null && r.min_price <= 100);
+      }
+      if (mode === 'under_200') {
+        return results.filter((r) => r.min_price !== null && r.min_price <= 200);
+      }
+      return results;
+    }
+
+    function renderResults(payload) {
+      lastPayload = payload;
+      const filtered = applyPriceFilter(payload.results || []);
+      if (!filtered.length) {
+        resultsEl.innerHTML = '<div class="small">No rows match current filter.</div>';
+        return;
+      }
+
+      const rows = filtered.map((r) => `
+        <tr>
+          <td><span class="pill">${r.source}</span></td>
+          <td>
+            <div><strong>${r.event_name}</strong></div>
+            <div class="small">${r.venue || ''} ${r.city ? '• ' + r.city : ''}</div>
+          </td>
+          <td>${r.event_date || ''}</td>
+          <td>${fmtPrice(r.min_price, r.max_price, r.currency)}</td>
+          <td>${r.availability}</td>
+          <td><a href="${r.url}" target="_blank" rel="noopener noreferrer">Open</a></td>
+        </tr>
+      `).join('');
+
+      resultsEl.innerHTML = `
+        <div class="small">Showing ${filtered.length}/${payload.count} results for "${payload.query}" in ZIP ${payload.zip_code}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Event</th>
+              <th>Date</th>
+              <th>Price</th>
+              <th>Status</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    priceFilterEl.addEventListener('change', () => {
+      if (lastPayload) renderResults(lastPayload);
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      out.textContent = 'Searching ticket providers...';
+      try {
+        const fd = new FormData();
+        const query = document.getElementById('query').value.trim();
+        if (!query) throw new Error('Enter an artist or event name.');
+
+        fd.set('query', query);
+        fd.set('zip_code', document.getElementById('zip_code').value.trim());
+        fd.set('date_from', document.getElementById('date_from').value || '');
+        fd.set('date_to', document.getElementById('date_to').value || '');
+        fd.set('limit', document.getElementById('limit').value);
+        fd.set('include_ticketmaster', document.getElementById('include_ticketmaster').checked ? 'true' : 'false');
+        fd.set('include_seatgeek', document.getElementById('include_seatgeek').checked ? 'true' : 'false');
+        fd.set('include_stubhub', document.getElementById('include_stubhub').checked ? 'true' : 'false');
+        fd.set('include_vividseats', document.getElementById('include_vividseats').checked ? 'true' : 'false');
+        fd.set('include_tickpick', document.getElementById('include_tickpick').checked ? 'true' : 'false');
+
+        const res = await fetch('/tickets/search', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(data));
+
+        out.textContent = JSON.stringify({ count: data.count, errors: data.errors }, null, 2);
+        renderResults(data);
+      } catch (err) {
+        out.textContent = String(err);
+      }
+    });
+  </script>
+</body>
+</html>

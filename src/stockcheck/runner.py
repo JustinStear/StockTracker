@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from stockcheck.adapters import BestBuyAdapter, GameStopAdapter, TargetAdapter, WalmartAdapter
+from stockcheck.adapters import GameStopAdapter, TargetAdapter, WalmartAdapter
 from stockcheck.alerts import AlertSink, DiscordWebhookAlertSink, DryRunAlertSink
 from stockcheck.config import load_config
 from stockcheck.geo import ZipGeocoder
@@ -57,18 +57,33 @@ class StockCheckerService:
 
         raise ValueError("location must include zip or lat/lon")
 
-    def _adapter_factories(self) -> dict[str, AdapterFactory]:
+    def _adapter_factories(self, lat: float, lon: float) -> dict[str, AdapterFactory]:
+        zip_code = self.config.location.zip
         return {
-            "bestbuy": lambda: BestBuyAdapter(),
-            "target": lambda: TargetAdapter(headless=self.headless),
-            "walmart": lambda: WalmartAdapter(headless=self.headless),
-            "gamestop": lambda: GameStopAdapter(headless=self.headless),
+            "target": lambda: TargetAdapter(
+                headless=self.headless,
+                zip_code=zip_code,
+                lat=lat,
+                lon=lon,
+            ),
+            "walmart": lambda: WalmartAdapter(
+                headless=self.headless,
+                zip_code=zip_code,
+                lat=lat,
+                lon=lon,
+            ),
+            "gamestop": lambda: GameStopAdapter(
+                headless=self.headless,
+                zip_code=zip_code,
+                lat=lat,
+                lon=lon,
+            ),
         }
 
     def run_once(self) -> list[CheckRecord]:
         lat, lon = self._resolve_lat_lon()
         records: list[CheckRecord] = []
-        factories = self._adapter_factories()
+        factories = self._adapter_factories(lat, lon)
 
         by_retailer: dict[str, list[WatchItem]] = {}
         for item in self.config.watchlist:

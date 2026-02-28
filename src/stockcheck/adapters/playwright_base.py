@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import AbstractContextManager
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
@@ -14,8 +15,17 @@ LOG = logging.getLogger(__name__)
 class PlaywrightRetailerAdapter(RetailerAdapter, AbstractContextManager["PlaywrightRetailerAdapter"]):
     blocked_resource_types = {"image", "media", "font"}
 
-    def __init__(self, headless: bool = True) -> None:
+    def __init__(
+        self,
+        headless: bool = True,
+        zip_code: str | None = None,
+        lat: float | None = None,
+        lon: float | None = None,
+    ) -> None:
         self.headless = headless
+        self.zip_code = zip_code
+        self.lat = lat
+        self.lon = lon
         self._playwright = None
         self._browser = None
         self._context: BrowserContext | None = None
@@ -23,7 +33,30 @@ class PlaywrightRetailerAdapter(RetailerAdapter, AbstractContextManager["Playwri
     def __enter__(self) -> "PlaywrightRetailerAdapter":
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self.headless)
-        self._context = self._browser.new_context()
+        context_kwargs: dict[str, object] = {}
+        if self.lat is not None and self.lon is not None:
+            context_kwargs["geolocation"] = {"latitude": self.lat, "longitude": self.lon}
+            context_kwargs["permissions"] = ["geolocation"]
+        if self.zip_code:
+            context_kwargs["extra_http_headers"] = {
+                "x-zip-code": self.zip_code,
+                "x-postal-code": self.zip_code,
+            }
+        self._context = self._browser.new_context(**context_kwargs)
+        if self.zip_code:
+            self._context.add_init_script(
+                script=(
+                    "(() => {"
+                    f"const z = {self.zip_code!r};"
+                    "try {"
+                    "localStorage.setItem('zipCode', z);"
+                    "localStorage.setItem('zipcode', z);"
+                    "localStorage.setItem('postalCode', z);"
+                    "sessionStorage.setItem('zipCode', z);"
+                    "} catch (_) {}"
+                    "})();"
+                )
+            )
         self._context.route("**/*", self._route_filter)
         return self
 
@@ -52,11 +85,11 @@ class PlaywrightRetailerAdapter(RetailerAdapter, AbstractContextManager["Playwri
         return [
             Store(
                 retailer=self.name,
-                store_id="local-context",
-                name=f"{self.name} local area",
+                store_id=f"local-context-{self.zip_code or 'unknown'}",
+                name=f"{self.name} local area ({self.zip_code or 'zip-unknown'})",
                 lat=lat,
                 lon=lon,
-                address=f"within {radius_miles:.1f} miles",
+                address=f"within {radius_miles:.1f} miles of ZIP {self.zip_code or 'unknown'}",
             )
         ]
 
@@ -69,3 +102,10 @@ class PlaywrightRetailerAdapter(RetailerAdapter, AbstractContextManager["Playwri
 
     def _check_item_with_page(self, page: Page, watch_item: WatchItem) -> StockStatus:
         raise NotImplementedError
+
+    def _append_query_params(self, url: str, params: dict[str, str]) -> str:
+        parsed = urlparse(url)
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query.update(params)
+        updated = parsed._replace(query=urlencode(query))
+        return urlunparse(updated)

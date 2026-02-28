@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from urllib.parse import quote_plus, unquote, urlparse
@@ -37,7 +36,6 @@ class ProductDiscoveryService:
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
         self._retailer_domains = {
-            "bestbuy": "bestbuy.com",
             "target": "target.com",
             "walmart": "walmart.com",
             "gamestop": "gamestop.com",
@@ -58,11 +56,6 @@ class ProductDiscoveryService:
                     results.extend(self._discover_walmart(cleaned, limit))
                 elif retailer == "gamestop":
                     results.extend(self._discover_gamestop(cleaned, limit))
-                elif retailer == "bestbuy":
-                    if not os.getenv("BESTBUY_API_KEY"):
-                        errors.append("bestbuy: set BESTBUY_API_KEY to discover SKU-backed Best Buy products")
-                        continue
-                    results.extend(self._discover_bestbuy(cleaned, limit))
             except requests.RequestException as exc:
                 errors.append(f"{retailer}: {exc}")
 
@@ -127,72 +120,6 @@ class ProductDiscoveryService:
             )
             for item in links
         ]
-
-    def _discover_bestbuy(self, keyword: str, limit: int) -> list[ProductCandidate]:
-        api_key = os.getenv("BESTBUY_API_KEY")
-        if api_key:
-            api_results = self._discover_bestbuy_api(keyword, limit, api_key)
-            if api_results:
-                return api_results
-
-        links = self._discover_via_duckduckgo("bestbuy", keyword, limit, r"/site/")
-        sku_pattern = re.compile(r"/(\d+)\.p", flags=re.IGNORECASE)
-        skus: list[str] = []
-        for item in links:
-            match = sku_pattern.search(item["url"])
-            if not match:
-                continue
-            sku = match.group(1)
-            if sku in skus:
-                continue
-            skus.append(sku)
-            if len(skus) >= limit:
-                break
-
-        return [
-            ProductCandidate(
-                retailer="bestbuy",
-                label=f"Best Buy SKU {sku}",
-                identifier_type="sku",
-                identifier_value=sku,
-                url=f"https://www.bestbuy.com/site/{sku}.p",
-            )
-            for sku in skus
-        ]
-
-    def _discover_bestbuy_api(self, keyword: str, limit: int, api_key: str) -> list[ProductCandidate]:
-        endpoint = "https://api.bestbuy.com/v1/products((search={query}))"
-        response = requests.get(
-            endpoint.format(query=quote_plus(keyword)),
-            params={
-                "apiKey": api_key,
-                "format": "json",
-                "show": "name,sku,url",
-                "pageSize": limit,
-            },
-            timeout=self.timeout_seconds,
-        )
-        if response.status_code != 200:
-            return []
-
-        payload = response.json()
-        products = payload.get("products", [])
-        results: list[ProductCandidate] = []
-        for p in products:
-            sku = str(p.get("sku", "")).strip()
-            name = str(p.get("name", "")).strip() or f"Best Buy SKU {sku}"
-            if not sku:
-                continue
-            results.append(
-                ProductCandidate(
-                    retailer="bestbuy",
-                    label=name,
-                    identifier_type="sku",
-                    identifier_value=sku,
-                    url=str(p.get("url", "")).strip() or f"https://www.bestbuy.com/site/{sku}.p",
-                )
-            )
-        return results
 
     def _discover_via_duckduckgo(
         self, retailer: str, keyword: str, limit: int, path_hint_regex: str

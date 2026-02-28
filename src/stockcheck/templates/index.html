@@ -34,6 +34,26 @@
       box-shadow: 0 8px 28px rgba(18, 24, 21, 0.08);
     }
     h1 { margin-top: 0; letter-spacing: 0.2px; }
+    .nav {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .nav a {
+      text-decoration: none;
+      color: #104637;
+      border: 1px solid #c4d0ca;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      background: #eef5f1;
+    }
+    .nav a.active {
+      background: #0b6b56;
+      color: #fff;
+      border-color: #0b6b56;
+    }
     p { color: var(--muted); }
     .grid {
       display: grid;
@@ -141,13 +161,17 @@
 <body>
   <div class="wrap">
     <div class="card">
+      <div class="nav">
+        <a class="active" href="/pokemon">Pokemon</a>
+        <a href="/tickets">Concert Tickets</a>
+      </div>
       <h1>Pokemon Stock Checker</h1>
       <p>Find products by keyword, select what to monitor, then save config and run checks.</p>
       <form id="cfg">
         <div class="grid">
           <div>
             <label for="zip_code">ZIP code</label>
-            <input id="zip_code" name="zip_code" placeholder="60007" />
+            <input id="zip_code" name="zip_code" value="21032" placeholder="60007" />
           </div>
           <div>
             <label for="radius_miles">Radius (miles)</label>
@@ -171,6 +195,19 @@
             <input id="keyword" placeholder="pokemon elite trainer box" />
           </div>
           <div>
+            <label for="product_type">Pokemon product type</label>
+            <select id="product_type">
+              <option value="">Any type</option>
+              <option value="elite trainer box">Elite Trainer Box</option>
+              <option value="blister pack">Blister Pack</option>
+              <option value="booster bundle">Booster Bundle</option>
+              <option value="booster box">Booster Box</option>
+              <option value="single card">Single Card</option>
+              <option value="tin">Tin</option>
+              <option value="collection box">Collection Box</option>
+            </select>
+          </div>
+          <div>
             <label for="limit_per_retailer">Results per retailer</label>
             <select id="limit_per_retailer">
               <option value="4">4</option>
@@ -182,7 +219,6 @@
         </div>
 
         <div class="retailers">
-          <label><input id="include_bestbuy" type="checkbox" checked />Best Buy</label>
           <label><input id="include_target" type="checkbox" checked />Target</label>
           <label><input id="include_walmart" type="checkbox" checked />Walmart</label>
           <label><input id="include_gamestop" type="checkbox" checked />GameStop</label>
@@ -214,6 +250,16 @@
       <h3>Result</h3>
       <pre id="out">Ready.</pre>
       <h3>Latest Check Results</h3>
+      <div class="grid">
+        <div>
+          <label for="live_filter">Result filter</label>
+          <select id="live_filter">
+            <option value="hide_out_of_stock" selected>Hide out of stock</option>
+            <option value="in_stock_only">In stock only</option>
+            <option value="all">Show all</option>
+          </select>
+        </div>
+      </div>
       <div id="live_results" class="results">
         <div class="small">Run a check to see live store results.</div>
       </div>
@@ -227,8 +273,11 @@
     const liveResultsEl = document.getElementById('live_results');
     const selectedItemsEl = document.getElementById('selected_items_json');
     const manualJsonEl = document.getElementById('watchlist_json');
+    const productTypeEl = document.getElementById('product_type');
+    const liveFilterEl = document.getElementById('live_filter');
 
     let discovered = [];
+    let lastCheckPayload = null;
 
     async function postForm(url, formData) {
       const res = await fetch(url, { method: 'POST', body: formData });
@@ -283,10 +332,22 @@
       syncSelectedItems();
     }
 
+    function applyLiveFilter(checks) {
+      const mode = liveFilterEl.value;
+      if (mode === 'in_stock_only') {
+        return checks.filter((c) => c.status === 'in_stock');
+      }
+      if (mode === 'hide_out_of_stock') {
+        return checks.filter((c) => c.status !== 'out_of_stock');
+      }
+      return checks;
+    }
+
     function renderLiveChecks(payload) {
-      const checks = payload.checks || [];
+      lastCheckPayload = payload;
+      const checks = applyLiveFilter(payload.checks || []);
       if (!checks.length) {
-        liveResultsEl.innerHTML = '<div class=\"small\">No check rows returned.</div>';
+        liveResultsEl.innerHTML = '<div class=\"small\">No rows match the selected filter.</div>';
         return;
       }
 
@@ -300,7 +361,7 @@
       `).join('');
 
       liveResultsEl.innerHTML = `
-        <div class=\"small\">Checked at ${payload.checked_at}. In stock: ${payload.in_stock_count}/${payload.count}</div>
+        <div class=\"small\">Checked at ${payload.checked_at}. Showing ${checks.length}/${payload.count}. In stock: ${payload.in_stock_count}/${payload.count}</div>
         <table>
           <thead>
             <tr>
@@ -315,17 +376,24 @@
       `;
     }
 
+    liveFilterEl.addEventListener('change', () => {
+      if (lastCheckPayload) {
+        renderLiveChecks(lastCheckPayload);
+      }
+    });
+
     document.getElementById('discoverBtn').addEventListener('click', async () => {
       out.textContent = 'Searching products...';
       try {
         const keyword = document.getElementById('keyword').value.trim();
-        if (!keyword) {
+        const type = productTypeEl.value.trim();
+        const searchTerm = [keyword, type].filter(Boolean).join(' ').trim();
+        if (!searchTerm) {
           throw new Error('Enter a keyword first, for example: pokemon elite trainer box');
         }
         const fd = new FormData();
-        fd.set('keyword', keyword);
+        fd.set('keyword', searchTerm);
         fd.set('limit_per_retailer', document.getElementById('limit_per_retailer').value);
-        fd.set('include_bestbuy', document.getElementById('include_bestbuy').checked ? 'true' : 'false');
         fd.set('include_target', document.getElementById('include_target').checked ? 'true' : 'false');
         fd.set('include_walmart', document.getElementById('include_walmart').checked ? 'true' : 'false');
         fd.set('include_gamestop', document.getElementById('include_gamestop').checked ? 'true' : 'false');

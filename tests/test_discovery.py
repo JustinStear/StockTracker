@@ -20,16 +20,16 @@ def test_discovery_continues_when_one_retailer_errors(monkeypatch) -> None:
             )
         ]
 
-    def fake_bestbuy(keyword: str, limit: int):
+    def fake_gamestop(keyword: str, limit: int):
         del keyword, limit
         raise requests.RequestException("timeout")
 
     monkeypatch.setattr(svc, "_discover_target", fake_target)
-    monkeypatch.setattr(svc, "_discover_bestbuy", fake_bestbuy)
+    monkeypatch.setattr(svc, "_discover_gamestop", fake_gamestop)
 
-    result = svc.discover("elite trainer box", ["target", "bestbuy"], limit=3)
+    result = svc.discover("elite trainer box", ["target", "gamestop"], limit=3)
 
     assert len(result.candidates) == 1
     assert result.candidates[0].retailer == "target"
     assert len(result.errors) == 1
-    assert "bestbuy" in result.errors[0]
+    assert "gamestop" in result.errors[0]

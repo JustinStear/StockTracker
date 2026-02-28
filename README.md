@@ -1,6 +1,6 @@
-# Pokemon Stock Checker
+# Pokemon Stock Checker + Ticket Search
 
-Local Pokemon TCG stock checker for Best Buy, Target, Walmart, and GameStop with alerting and a web frontend.
+Local Pokemon TCG stock checker plus a concert ticket metasearch page.
 
 ## Safety guardrails
 
@@ -11,7 +11,9 @@ Local Pokemon TCG stock checker for Best Buy, Target, Walmart, and GameStop with
 ## Features
 
 - CLI modes: one-shot and daemon (`stockcheck once`, `stockcheck run`)
-- Web UI (`stockcheck web`) to fill variables and trigger checks
+- Web UI (`stockcheck web`) with:
+  - `/pokemon` for product stock checks
+  - `/tickets` for concert ticket metasearch
 - Keyword-based product discovery in web UI (select products instead of writing JSON)
 - Transition-based alerts: only alerts on `OUT_OF_STOCK/UNKNOWN -> IN_STOCK`
 - Persistent SQLite state cache
@@ -19,10 +21,12 @@ Local Pokemon TCG stock checker for Best Buy, Target, Walmart, and GameStop with
 
 ## Capability matrix
 
-- `bestbuy`: API-based (requires `BESTBUY_API_KEY`)
 - `target`: Playwright page-based availability signal checks
 - `walmart`: Playwright page-based availability signal checks
 - `gamestop`: Playwright page-based availability signal checks
+- `ticketmaster`: API-based ticket/event data (`TICKETMASTER_API_KEY`)
+- `seatgeek`: API-based ticket/event data (`SEATGEEK_CLIENT_ID`)
+- `stubhub` / `vividseats` / `tickpick`: search-link providers (no checkout automation)
 
 ## Quick start
 
@@ -35,7 +39,10 @@ playwright install chromium
 cp config.example.yaml config.yaml
 ```
 
-Set `BESTBUY_API_KEY` in your environment if using Best Buy SKUs.
+Set provider keys in environment for richer ticket results:
+
+- `TICKETMASTER_API_KEY`
+- `SEATGEEK_CLIENT_ID`
 
 ## CLI usage
 

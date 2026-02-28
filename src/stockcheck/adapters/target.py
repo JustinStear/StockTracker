@@ -30,7 +30,10 @@ class TargetAdapter(PlaywrightRetailerAdapter):
         if watch_item.identifier.type != "url":
             raise ValueError("target adapter requires url identifier")
 
-        page.goto(watch_item.identifier.value, wait_until="domcontentloaded", timeout=30000)
+        url = watch_item.identifier.value
+        if self.zip_code:
+            url = self._append_query_params(url, {"zip": self.zip_code, "zipcode": self.zip_code})
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
         content = page.inner_text("body").lower()
 
         if any(term in content for term in self.negative_signals):
