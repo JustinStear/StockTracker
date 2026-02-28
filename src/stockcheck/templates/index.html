@@ -150,14 +150,6 @@
             <input id="zip_code" name="zip_code" placeholder="60007" />
           </div>
           <div>
-            <label for="lat">Latitude (if no ZIP)</label>
-            <input id="lat" name="lat" placeholder="42.0000" />
-          </div>
-          <div>
-            <label for="lon">Longitude (if no ZIP)</label>
-            <input id="lon" name="lon" placeholder="-88.0000" />
-          </div>
-          <div>
             <label for="radius_miles">Radius (miles)</label>
             <input id="radius_miles" name="radius_miles" type="number" value="20" min="1" />
           </div>
@@ -326,8 +318,12 @@
     document.getElementById('discoverBtn').addEventListener('click', async () => {
       out.textContent = 'Searching products...';
       try {
+        const keyword = document.getElementById('keyword').value.trim();
+        if (!keyword) {
+          throw new Error('Enter a keyword first, for example: pokemon elite trainer box');
+        }
         const fd = new FormData();
-        fd.set('keyword', document.getElementById('keyword').value.trim());
+        fd.set('keyword', keyword);
         fd.set('limit_per_retailer', document.getElementById('limit_per_retailer').value);
         fd.set('include_bestbuy', document.getElementById('include_bestbuy').checked ? 'true' : 'false');
         fd.set('include_target', document.getElementById('include_target').checked ? 'true' : 'false');

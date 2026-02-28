@@ -76,13 +76,21 @@ class StockCheckerService:
 
         with ExitStack() as stack:
             adapters: dict[str, object] = {}
+            adapter_init_errors: dict[str, str] = {}
             for retailer in by_retailer:
-                adapter = factories[retailer]()
-                if hasattr(adapter, "__enter__") and hasattr(adapter, "__exit__"):
-                    adapter = stack.enter_context(adapter)
-                adapters[retailer] = adapter
+                try:
+                    adapter = factories[retailer]()
+                    if hasattr(adapter, "__enter__") and hasattr(adapter, "__exit__"):
+                        adapter = stack.enter_context(adapter)
+                    adapters[retailer] = adapter
+                except Exception as exc:  # noqa: BLE001
+                    LOG.warning("adapter init failed retailer=%s error=%s", retailer, exc)
+                    adapter_init_errors[retailer] = str(exc)
 
             for retailer, items in by_retailer.items():
+                if retailer in adapter_init_errors:
+                    self._record_adapter_failure(items, adapter_init_errors[retailer], records)
+                    continue
                 adapter = adapters[retailer]
                 stores = adapter.find_stores_near(lat, lon, self.config.radius_miles)
                 for item in items:
@@ -143,6 +151,34 @@ class StockCheckerService:
                     store_id=store.store_id,
                     store_name=store.name,
                     status=status,
+                )
+            )
+
+    def _record_adapter_failure(
+        self, items: list[WatchItem], error_message: str, records: list[CheckRecord]
+    ) -> None:
+        for item in items:
+            store_id = "adapter-unavailable"
+            self.state.update_status(
+                retailer=item.retailer,
+                item_key=item.item_key,
+                store_id=store_id,
+                status=StockStatus.UNKNOWN,
+            )
+            LOG.warning(
+                "retailer=%s item=%s status=unknown reason=adapter_unavailable error=%s",
+                item.retailer,
+                item.label,
+                error_message,
+            )
+            records.append(
+                CheckRecord(
+                    retailer=item.retailer,
+                    label=item.label,
+                    item_key=item.item_key,
+                    store_id=store_id,
+                    store_name="Adapter unavailable",
+                    status=StockStatus.UNKNOWN,
                 )
             )
 

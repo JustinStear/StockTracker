@@ -27,8 +27,6 @@ def _load_form_html() -> str:
 
 def _build_config_from_form(
     zip_code: str,
-    lat: str,
-    lon: str,
     radius_miles: float,
     poll_seconds: int,
     discord_webhook: str,
@@ -47,15 +45,10 @@ def _build_config_from_form(
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=400, detail=f"Invalid watchlist JSON: {exc}") from exc
 
-    location: dict[str, object] = {}
-    if zip_code.strip():
-        location["zip"] = zip_code.strip()
-    else:
-        try:
-            location["lat"] = float(lat)
-            location["lon"] = float(lon)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Provide ZIP or numeric lat/lon") from exc
+    zip_value = zip_code.strip()
+    if not zip_value:
+        raise HTTPException(status_code=400, detail="ZIP code is required")
+    location: dict[str, object] = {"zip": zip_value}
 
     payload = {
         "location": location,
@@ -96,8 +89,6 @@ def status(config_path: str = str(CONFIG_PATH)) -> JSONResponse:
 @app.post("/save-config")
 def save_config(
     zip_code: str = Form(default=""),
-    lat: str = Form(default=""),
-    lon: str = Form(default=""),
     radius_miles: float = Form(default=20.0),
     poll_seconds: int = Form(default=180),
     discord_webhook: str = Form(default=""),
@@ -106,8 +97,6 @@ def save_config(
 ) -> dict[str, str]:
     config = _build_config_from_form(
         zip_code=zip_code,
-        lat=lat,
-        lon=lon,
         radius_miles=radius_miles,
         poll_seconds=poll_seconds,
         discord_webhook=discord_webhook,

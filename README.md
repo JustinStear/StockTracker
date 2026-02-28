@@ -54,7 +54,7 @@ stockcheck web --host 0.0.0.0 --port 8000
 
 1. Start server: `stockcheck web`
 2. Open `http://localhost:8000`
-3. Fill ZIP or lat/lon, radius, poll interval, webhook, and watchlist JSON.
+3. Fill ZIP, radius, poll interval, and webhook.
 4. Use product keyword search, select items, then click `Save Config`.
 5. Click `Check Now (Dry Run)` to run and view live results on the page.
 

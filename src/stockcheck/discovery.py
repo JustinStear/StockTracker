@@ -3,8 +3,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from html import unescape
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote, urlparse
 
 import requests
 
@@ -37,6 +36,12 @@ class ProductCandidate:
 class ProductDiscoveryService:
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
+        self._retailer_domains = {
+            "bestbuy": "bestbuy.com",
+            "target": "target.com",
+            "walmart": "walmart.com",
+            "gamestop": "gamestop.com",
+        }
 
     def discover(self, keyword: str, retailers: list[str], limit: int = 8) -> DiscoveryResult:
         cleaned = keyword.strip()
@@ -54,6 +59,9 @@ class ProductDiscoveryService:
                 elif retailer == "gamestop":
                     results.extend(self._discover_gamestop(cleaned, limit))
                 elif retailer == "bestbuy":
+                    if not os.getenv("BESTBUY_API_KEY"):
+                        errors.append("bestbuy: set BESTBUY_API_KEY to discover SKU-backed Best Buy products")
+                        continue
                     results.extend(self._discover_bestbuy(cleaned, limit))
             except requests.RequestException as exc:
                 errors.append(f"{retailer}: {exc}")
@@ -61,20 +69,18 @@ class ProductDiscoveryService:
         return DiscoveryResult(candidates=results, errors=errors)
 
     def _discover_target(self, keyword: str, limit: int) -> list[ProductCandidate]:
-        url = f"https://www.target.com/s?searchTerm={quote_plus(keyword)}"
-        html = self._get(url)
-        links = self._extract_product_links(
-            html,
-            retailer="target",
-            base_url="https://www.target.com",
-            path_pattern=r'(/p/[^"]+)',
-            title_pattern=r"<title>(.*?)</title>",
-            limit=limit,
-        )
+        links = self._discover_via_duckduckgo("target", keyword, limit, r"/p/")
+        if not links:
+            links = [
+                {
+                    "url": f"https://www.target.com/s?searchTerm={quote_plus(keyword)}",
+                    "label": f"Target search: {keyword}",
+                }
+            ]
         return [
             ProductCandidate(
                 retailer="target",
-                label=item["label"],
+                label=item.get("label", self._label_from_url(item["url"], "Target")),
                 identifier_type="url",
                 identifier_value=item["url"],
                 url=item["url"],
@@ -83,20 +89,18 @@ class ProductDiscoveryService:
         ]
 
     def _discover_walmart(self, keyword: str, limit: int) -> list[ProductCandidate]:
-        url = f"https://www.walmart.com/search?q={quote_plus(keyword)}"
-        html = self._get(url)
-        links = self._extract_product_links(
-            html,
-            retailer="walmart",
-            base_url="https://www.walmart.com",
-            path_pattern=r'(/ip/[^"]+)',
-            title_pattern=r"<title>(.*?)</title>",
-            limit=limit,
-        )
+        links = self._discover_via_duckduckgo("walmart", keyword, limit, r"/ip/")
+        if not links:
+            links = [
+                {
+                    "url": f"https://www.walmart.com/search?q={quote_plus(keyword)}",
+                    "label": f"Walmart search: {keyword}",
+                }
+            ]
         return [
             ProductCandidate(
                 retailer="walmart",
-                label=item["label"],
+                label=item.get("label", self._label_from_url(item["url"], "Walmart")),
                 identifier_type="url",
                 identifier_value=item["url"],
                 url=item["url"],
@@ -105,20 +109,18 @@ class ProductDiscoveryService:
         ]
 
     def _discover_gamestop(self, keyword: str, limit: int) -> list[ProductCandidate]:
-        url = f"https://www.gamestop.com/search/?q={quote_plus(keyword)}"
-        html = self._get(url)
-        links = self._extract_product_links(
-            html,
-            retailer="gamestop",
-            base_url="https://www.gamestop.com",
-            path_pattern=r'(/[^"\s]*?/products/[^"\s]*?)',
-            title_pattern=r"<title>(.*?)</title>",
-            limit=limit,
-        )
+        links = self._discover_via_duckduckgo("gamestop", keyword, limit, r"/products/")
+        if not links:
+            links = [
+                {
+                    "url": f"https://www.gamestop.com/search/?q={quote_plus(keyword)}",
+                    "label": f"GameStop search: {keyword}",
+                }
+            ]
         return [
             ProductCandidate(
                 retailer="gamestop",
-                label=item["label"],
+                label=item.get("label", self._label_from_url(item["url"], "GameStop")),
                 identifier_type="url",
                 identifier_value=item["url"],
                 url=item["url"],
@@ -133,14 +135,17 @@ class ProductDiscoveryService:
             if api_results:
                 return api_results
 
-        url = f"https://www.bestbuy.com/site/searchpage.jsp?st={quote_plus(keyword)}"
-        html = self._get(url)
-
-        sku_pattern = re.compile(r"/site/[^\"]+/(\d+)\.p", flags=re.IGNORECASE)
+        links = self._discover_via_duckduckgo("bestbuy", keyword, limit, r"/site/")
+        sku_pattern = re.compile(r"/(\d+)\.p", flags=re.IGNORECASE)
         skus: list[str] = []
-        for sku in sku_pattern.findall(html):
-            if sku not in skus:
-                skus.append(sku)
+        for item in links:
+            match = sku_pattern.search(item["url"])
+            if not match:
+                continue
+            sku = match.group(1)
+            if sku in skus:
+                continue
+            skus.append(sku)
             if len(skus) >= limit:
                 break
 
@@ -189,40 +194,63 @@ class ProductDiscoveryService:
             )
         return results
 
-    def _extract_product_links(
-        self,
-        html: str,
-        retailer: str,
-        base_url: str,
-        path_pattern: str,
-        title_pattern: str,
-        limit: int,
+    def _discover_via_duckduckgo(
+        self, retailer: str, keyword: str, limit: int, path_hint_regex: str
     ) -> list[dict[str, str]]:
-        del retailer
+        domain = self._retailer_domains[retailer]
+        query = f"{keyword} pokemon tcg {retailer}"
+        url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
+        html = self._get(url)
+
+        encoded_links = re.findall(r'class=\"result__a\" href=\"([^\"]+)\"', html, flags=re.IGNORECASE)
+        deduped: list[dict[str, str]] = []
         seen: set[str] = set()
-        links: list[dict[str, str]] = []
-
-        title_match = re.search(title_pattern, html, flags=re.IGNORECASE | re.DOTALL)
-        fallback_title = "Search result"
-        if title_match:
-            fallback_title = self._clean_label(title_match.group(1))
-
-        for match in re.finditer(path_pattern, html, flags=re.IGNORECASE):
-            path = match.group(1).split("?")[0]
-            full_url = f"{base_url}{path}"
-            if full_url in seen:
+        hint_re = re.compile(path_hint_regex, flags=re.IGNORECASE)
+        all_domain_links: list[str] = []
+        for encoded in encoded_links:
+            decoded = unquote(encoded)
+            if "uddg=" in decoded:
+                uddg_match = re.search(r"uddg=([^&]+)", decoded)
+                if uddg_match:
+                    decoded = unquote(uddg_match.group(1))
+            parsed = urlparse(decoded)
+            if parsed.scheme not in {"http", "https"}:
                 continue
-            seen.add(full_url)
-            links.append({"url": full_url, "label": fallback_title})
-            if len(links) >= limit:
+            if domain not in parsed.netloc:
+                continue
+            clean_url = decoded.split("?")[0]
+            all_domain_links.append(clean_url)
+            if clean_url in seen:
+                continue
+            if not hint_re.search(clean_url):
+                continue
+            seen.add(clean_url)
+            deduped.append({"url": clean_url, "label": self._label_from_url(clean_url, retailer)})
+            if len(deduped) >= limit:
                 break
 
-        return links
+        if deduped:
+            return deduped
 
-    def _clean_label(self, raw: str) -> str:
-        raw = unescape(raw)
-        raw = re.sub(r"\s+", " ", raw).strip()
-        return raw
+        for clean_url in all_domain_links:
+            if clean_url in seen:
+                continue
+            seen.add(clean_url)
+            deduped.append({"url": clean_url, "label": self._label_from_url(clean_url, retailer)})
+            if len(deduped) >= limit:
+                break
+
+        return deduped
+
+    def _label_from_url(self, url: str, retailer_name: str) -> str:
+        parsed = urlparse(url)
+        tail = parsed.path.rsplit("/", 1)[-1]
+        tail = tail.replace(".p", "")
+        tail = tail.replace("-", " ").strip()
+        tail = re.sub(r"\s+", " ", tail)
+        if not tail:
+            return f"{retailer_name} Product"
+        return f"{retailer_name}: {tail[:80]}"
 
     def _get(self, url: str) -> str:
         response = requests.get(
