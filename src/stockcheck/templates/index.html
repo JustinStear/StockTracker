@@ -156,6 +156,27 @@
     .status-in_stock { background: #ddf7e4; color: #145a2f; }
     .status-out_of_stock { background: #fde6df; color: #7f2f12; }
     .status-unknown { background: #eceff4; color: #334155; }
+    .version-badge {
+      position: fixed;
+      left: 10px;
+      bottom: 10px;
+      background: #13201a;
+      color: #d9f2e8;
+      border: 1px solid #2f4b40;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      max-width: 360px;
+      z-index: 99;
+    }
+    .version-badge summary {
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .version-badge ul {
+      margin: 6px 0 0 16px;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
@@ -267,6 +288,10 @@
       </div>
     </div>
   </div>
+  <details class="version-badge" id="version_badge">
+    <summary id="version_summary">Version: loading...</summary>
+    <ul id="version_changes"></ul>
+  </details>
 
   <script>
     const out = document.getElementById('out');
@@ -277,6 +302,8 @@
     const manualJsonEl = document.getElementById('watchlist_json');
     const productTypeEl = document.getElementById('product_type');
     const liveFilterEl = document.getElementById('live_filter');
+    const versionSummaryEl = document.getElementById('version_summary');
+    const versionChangesEl = document.getElementById('version_changes');
 
     let discovered = [];
     let lastCheckPayload = null;
@@ -482,6 +509,25 @@
         out.textContent = String(err);
       }
     });
+
+    async function loadVersionMeta() {
+      try {
+        const res = await fetch('/app-meta');
+        const meta = await res.json();
+        versionSummaryEl.textContent = `Version ${meta.version || 'unknown'}`;
+        const changes = meta.changes || [];
+        if (!changes.length) {
+          versionChangesEl.innerHTML = '<li>No changelog entries available.</li>';
+          return;
+        }
+        versionChangesEl.innerHTML = changes.map((c) => `<li>${c}</li>`).join('');
+      } catch (_err) {
+        versionSummaryEl.textContent = 'Version unavailable';
+        versionChangesEl.innerHTML = '<li>Could not load app metadata.</li>';
+      }
+    }
+
+    loadVersionMeta();
   </script>
 </body>
 </html>

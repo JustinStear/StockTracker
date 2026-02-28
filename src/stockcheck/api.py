@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from stockcheck import __version__
 from stockcheck.discovery import ProductDiscoveryService
 from stockcheck.models import AppConfig
 from stockcheck.state import StateStore
@@ -21,6 +22,7 @@ app = FastAPI(title="Pokemon Stock Checker")
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config.yaml"
+CHANGELOG_PATH = ROOT / "CHANGELOG.md"
 
 
 def _load_form_html() -> str:
@@ -29,6 +31,24 @@ def _load_form_html() -> str:
 
 def _load_tickets_html() -> str:
     return (Path(__file__).parent / "templates" / "tickets.html").read_text(encoding="utf-8")
+
+
+def _latest_changes() -> list[str]:
+    if not CHANGELOG_PATH.exists():
+        return []
+
+    lines = CHANGELOG_PATH.read_text(encoding="utf-8").splitlines()
+    in_latest = False
+    changes: list[str] = []
+    for line in lines:
+        if line.startswith("## "):
+            if in_latest:
+                break
+            in_latest = True
+            continue
+        if in_latest and line.startswith("- "):
+            changes.append(line[2:].strip())
+    return changes
 
 
 def _build_config_from_form(
@@ -84,6 +104,11 @@ def tickets_page() -> str:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/app-meta")
+def app_meta() -> dict[str, object]:
+    return {"version": __version__, "changes": _latest_changes()}
 
 
 @app.get("/status")

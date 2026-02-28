@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pokemon-stock-checker"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local Pokemon TCG stock checker with safe polling and alerts"
 readme = "README.md"
 requires-python = ">=3.11"
