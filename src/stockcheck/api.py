@@ -217,6 +217,9 @@ def tickets_search(
     include_stubhub: bool = Form(default=True),
     include_vividseats: bool = Form(default=True),
     include_tickpick: bool = Form(default=True),
+    include_livenation: bool = Form(default=True),
+    include_axs: bool = Form(default=True),
+    include_gametime: bool = Form(default=True),
     limit: int = Form(default=30),
 ) -> JSONResponse:
     zip_value = zip_code.strip()
@@ -234,6 +237,9 @@ def tickets_search(
         include_stubhub=include_stubhub,
         include_vividseats=include_vividseats,
         include_tickpick=include_tickpick,
+        include_livenation=include_livenation,
+        include_axs=include_axs,
+        include_gametime=include_gametime,
         limit=max(1, min(limit, 100)),
     )
 

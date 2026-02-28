@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import quote_plus
 
 import requests
@@ -42,6 +45,9 @@ class TicketSearchService:
         include_stubhub: bool,
         include_vividseats: bool,
         include_tickpick: bool,
+        include_livenation: bool = False,
+        include_axs: bool = False,
+        include_gametime: bool = False,
         limit: int = 20,
     ) -> TicketSearchResponse:
         cleaned_query = query.strip()
@@ -53,9 +59,7 @@ class TicketSearchService:
 
         if include_ticketmaster:
             api_key = os.getenv("TICKETMASTER_API_KEY")
-            if not api_key:
-                errors.append("ticketmaster: set TICKETMASTER_API_KEY for live event/price data")
-            else:
+            if api_key:
                 try:
                     results.extend(
                         self._search_ticketmaster(
@@ -69,12 +73,14 @@ class TicketSearchService:
                     )
                 except requests.RequestException as exc:
                     errors.append(f"ticketmaster: {exc}")
+            else:
+                # No key: still provide a search-link style result.
+                results.extend(self._search_public_provider("ticketmaster", cleaned_query, zip_code, date_from, date_to, limit_per_source=3, fallback_only=True))
+                errors.append("ticketmaster: API key not set; using public search fallback")
 
         if include_seatgeek:
             client_id = os.getenv("SEATGEEK_CLIENT_ID")
-            if not client_id:
-                errors.append("seatgeek: set SEATGEEK_CLIENT_ID for live event/price data")
-            else:
+            if client_id:
                 try:
                     results.extend(
                         self._search_seatgeek(
@@ -88,17 +94,39 @@ class TicketSearchService:
                     )
                 except requests.RequestException as exc:
                     errors.append(f"seatgeek: {exc}")
+            else:
+                results.extend(self._search_public_provider("seatgeek", cleaned_query, zip_code, date_from, date_to, limit_per_source=3, fallback_only=True))
+                errors.append("seatgeek: client id not set; using public search fallback")
 
-        if include_stubhub:
-            results.append(self._search_link_result("stubhub", cleaned_query, zip_code, date_from, date_to))
-        if include_vividseats:
-            results.append(self._search_link_result("vividseats", cleaned_query, zip_code, date_from, date_to))
-        if include_tickpick:
-            results.append(self._search_link_result("tickpick", cleaned_query, zip_code, date_from, date_to))
+        public_sources = [
+            (include_stubhub, "stubhub"),
+            (include_vividseats, "vividseats"),
+            (include_tickpick, "tickpick"),
+            (include_livenation, "livenation"),
+            (include_axs, "axs"),
+            (include_gametime, "gametime"),
+        ]
+        for enabled, source in public_sources:
+            if not enabled:
+                continue
+            try:
+                results.extend(
+                    self._search_public_provider(
+                        source=source,
+                        query=cleaned_query,
+                        zip_code=zip_code,
+                        date_from=date_from,
+                        date_to=date_to,
+                        limit_per_source=max(2, min(8, limit // 3)),
+                    )
+                )
+            except requests.RequestException as exc:
+                errors.append(f"{source}: {exc}")
+                results.append(self._search_link_result(source, cleaned_query, zip_code, date_from, date_to))
 
-        # Known prices first, then sort ascending.
-        results.sort(key=lambda r: (r.min_price is None, r.min_price or float("inf"), r.event_date))
-        return TicketSearchResponse(results=results[:limit], errors=errors)
+        deduped = self._dedupe_results(results)
+        deduped.sort(key=lambda r: (r.min_price is None, r.min_price or float("inf"), r.event_date, r.source))
+        return TicketSearchResponse(results=deduped[:limit], errors=errors)
 
     def _search_ticketmaster(
         self,
@@ -209,6 +237,58 @@ class TicketSearchService:
             )
         return out
 
+    def _search_public_provider(
+        self,
+        source: str,
+        query: str,
+        zip_code: str,
+        date_from: str | None,
+        date_to: str | None,
+        limit_per_source: int,
+        fallback_only: bool = False,
+    ) -> list[TicketResult]:
+        url = self._provider_search_url(source, query, zip_code, date_from, date_to)
+        if fallback_only:
+            return [self._search_link_result(source, query, zip_code, date_from, date_to)]
+
+        html = self._get_html(url)
+        extracted = self._extract_events_from_jsonld(html, source=source, default_city=zip_code)
+        if extracted:
+            return extracted[:limit_per_source]
+
+        return [self._search_link_result(source, query, zip_code, date_from, date_to)]
+
+    def _provider_search_url(
+        self,
+        source: str,
+        query: str,
+        zip_code: str,
+        date_from: str | None,
+        date_to: str | None,
+    ) -> str:
+        date_hint = ""
+        if date_from or date_to:
+            date_hint = f" {date_from or ''} {date_to or ''}".strip()
+        q = quote_plus(f"{query} {zip_code} {date_hint}".strip())
+
+        if source == "stubhub":
+            return f"https://www.stubhub.com/find/s/?q={q}"
+        if source == "vividseats":
+            return f"https://www.vividseats.com/search?searchTerm={q}"
+        if source == "tickpick":
+            return f"https://www.tickpick.com/search?q={q}"
+        if source == "livenation":
+            return f"https://www.livenation.com/search/{q}"
+        if source == "axs":
+            return f"https://www.axs.com/search?q={q}"
+        if source == "gametime":
+            return f"https://gametime.co/search?q={q}"
+        if source == "ticketmaster":
+            return f"https://www.ticketmaster.com/search?q={q}"
+        if source == "seatgeek":
+            return f"https://seatgeek.com/search?search={q}"
+        return f"https://www.google.com/search?q={q}+tickets"
+
     def _search_link_result(
         self,
         source: str,
@@ -217,20 +297,16 @@ class TicketSearchService:
         date_from: str | None,
         date_to: str | None,
     ) -> TicketResult:
-        date_suffix = ""
-        if date_from or date_to:
-            date_suffix = f" {date_from or ''} {date_to or ''}".strip()
-
-        if source == "stubhub":
-            url = f"https://www.stubhub.com/find/s/?q={quote_plus(query + ' ' + zip_code + ' ' + date_suffix)}"
-            label = "StubHub search"
-        elif source == "vividseats":
-            url = f"https://www.vividseats.com/search?searchTerm={quote_plus(query + ' ' + zip_code + ' ' + date_suffix)}"
-            label = "Vivid Seats search"
-        else:
-            url = f"https://www.tickpick.com/search?q={quote_plus(query + ' ' + zip_code + ' ' + date_suffix)}"
-            label = "TickPick search"
-
+        label = {
+            "stubhub": "StubHub search",
+            "vividseats": "Vivid Seats search",
+            "tickpick": "TickPick search",
+            "livenation": "Live Nation search",
+            "axs": "AXS search",
+            "gametime": "Gametime search",
+            "ticketmaster": "Ticketmaster search",
+            "seatgeek": "SeatGeek search",
+        }.get(source, f"{source} search")
         return TicketResult(
             source=source,
             event_name=label,
@@ -240,6 +316,134 @@ class TicketSearchService:
             min_price=None,
             max_price=None,
             currency=None,
-            url=url,
+            url=self._provider_search_url(source, query, zip_code, date_from, date_to),
             availability="search_link",
         )
+
+    def _get_html(self, url: str) -> str:
+        response = requests.get(
+            url,
+            timeout=self.timeout_seconds,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0 Safari/537.36"
+                )
+            },
+        )
+        response.raise_for_status()
+        return response.text
+
+    def _extract_events_from_jsonld(self, html: str, source: str, default_city: str) -> list[TicketResult]:
+        scripts = re.findall(
+            r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>',
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        out: list[TicketResult] = []
+        for script_body in scripts:
+            script_body = script_body.strip()
+            if not script_body:
+                continue
+            try:
+                payload = json.loads(script_body)
+            except json.JSONDecodeError:
+                continue
+
+            for event in self._walk_events(payload):
+                url = self._as_str(event.get("url"))
+                if not url:
+                    continue
+                offers = event.get("offers")
+                min_price, max_price, currency = self._parse_offers(offers)
+                location = event.get("location") or {}
+                venue = self._as_str(location.get("name"))
+                city = self._as_str((location.get("address") or {}).get("addressLocality")) or default_city
+                start_date = self._as_str(event.get("startDate"))[:10]
+                name = self._as_str(event.get("name")) or f"{source} event"
+                availability = "available" if offers else "unknown"
+                out.append(
+                    TicketResult(
+                        source=source,
+                        event_name=name,
+                        venue=venue,
+                        event_date=start_date,
+                        city=city,
+                        min_price=min_price,
+                        max_price=max_price,
+                        currency=currency,
+                        url=url,
+                        availability=availability,
+                    )
+                )
+
+        return self._dedupe_results(out)
+
+    def _walk_events(self, payload: Any) -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+
+        def rec(node: Any) -> None:
+            if isinstance(node, list):
+                for item in node:
+                    rec(item)
+                return
+            if not isinstance(node, dict):
+                return
+
+            typ = node.get("@type")
+            if typ == "Event" or (isinstance(typ, list) and "Event" in typ):
+                events.append(node)
+
+            for value in node.values():
+                rec(value)
+
+        rec(payload)
+        return events
+
+    def _parse_offers(self, offers: Any) -> tuple[float | None, float | None, str | None]:
+        if isinstance(offers, list):
+            numeric_prices = [self._as_float(o.get("price")) for o in offers if isinstance(o, dict)]
+            numeric_prices = [p for p in numeric_prices if p is not None]
+            if not numeric_prices:
+                return None, None, None
+            currency = None
+            for o in offers:
+                if isinstance(o, dict) and o.get("priceCurrency"):
+                    currency = self._as_str(o.get("priceCurrency"))
+                    break
+            return min(numeric_prices), max(numeric_prices), currency
+
+        if isinstance(offers, dict):
+            low = self._as_float(offers.get("lowPrice"))
+            high = self._as_float(offers.get("highPrice"))
+            price = self._as_float(offers.get("price"))
+            if low is None and price is not None:
+                low = price
+            if high is None and price is not None:
+                high = price
+            return low, high, self._as_str(offers.get("priceCurrency"))
+
+        return None, None, None
+
+    def _as_float(self, value: Any) -> float | None:
+        try:
+            if value is None:
+                return None
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _as_str(self, value: Any) -> str:
+        return str(value).strip() if value is not None else ""
+
+    def _dedupe_results(self, rows: list[TicketResult]) -> list[TicketResult]:
+        seen: set[tuple[str, str]] = set()
+        out: list[TicketResult] = []
+        for row in rows:
+            key = (row.source, row.url)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(row)
+        return out

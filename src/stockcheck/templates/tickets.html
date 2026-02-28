@@ -188,6 +188,9 @@
           <label><input id="include_stubhub" type="checkbox" checked />StubHub</label>
           <label><input id="include_vividseats" type="checkbox" checked />Vivid Seats</label>
           <label><input id="include_tickpick" type="checkbox" checked />TickPick</label>
+          <label><input id="include_livenation" type="checkbox" checked />Live Nation</label>
+          <label><input id="include_axs" type="checkbox" checked />AXS</label>
+          <label><input id="include_gametime" type="checkbox" checked />Gametime</label>
         </div>
 
         <button type="submit">Search Tickets</button>
@@ -292,6 +295,9 @@
         fd.set('include_stubhub', document.getElementById('include_stubhub').checked ? 'true' : 'false');
         fd.set('include_vividseats', document.getElementById('include_vividseats').checked ? 'true' : 'false');
         fd.set('include_tickpick', document.getElementById('include_tickpick').checked ? 'true' : 'false');
+        fd.set('include_livenation', document.getElementById('include_livenation').checked ? 'true' : 'false');
+        fd.set('include_axs', document.getElementById('include_axs').checked ? 'true' : 'false');
+        fd.set('include_gametime', document.getElementById('include_gametime').checked ? 'true' : 'false');
 
         const res = await fetch('/tickets/search', { method: 'POST', body: fd });
         const data = await res.json();
