@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from stockcheck.discovery import ProductDiscoveryService
 from stockcheck.models import AppConfig
 from stockcheck.runner import StockCheckerService
 from stockcheck.state import StateStore
@@ -31,11 +33,19 @@ def _build_config_from_form(
     poll_seconds: int,
     discord_webhook: str,
     watchlist_json: str,
+    selected_items_json: str,
 ) -> AppConfig:
-    try:
-        watchlist = json.loads(watchlist_json)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid watchlist JSON: {exc}") from exc
+    watchlist = []
+    if selected_items_json.strip():
+        try:
+            watchlist = json.loads(selected_items_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid selected items JSON: {exc}") from exc
+    elif watchlist_json.strip():
+        try:
+            watchlist = json.loads(watchlist_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid watchlist JSON: {exc}") from exc
 
     location: dict[str, object] = {}
     if zip_code.strip():
@@ -92,6 +102,7 @@ def save_config(
     poll_seconds: int = Form(default=180),
     discord_webhook: str = Form(default=""),
     watchlist_json: str = Form(default="[]"),
+    selected_items_json: str = Form(default="[]"),
 ) -> dict[str, str]:
     config = _build_config_from_form(
         zip_code=zip_code,
@@ -101,6 +112,7 @@ def save_config(
         poll_seconds=poll_seconds,
         discord_webhook=discord_webhook,
         watchlist_json=watchlist_json,
+        selected_items_json=selected_items_json,
     )
 
     import yaml
@@ -110,6 +122,53 @@ def save_config(
         encoding="utf-8",
     )
     return {"saved": str(CONFIG_PATH)}
+
+
+@app.post("/discover")
+def discover_products(
+    keyword: str = Form(...),
+    include_bestbuy: bool = Form(default=True),
+    include_target: bool = Form(default=True),
+    include_walmart: bool = Form(default=True),
+    include_gamestop: bool = Form(default=True),
+    limit_per_retailer: int = Form(default=6),
+) -> JSONResponse:
+    retailers: list[str] = []
+    if include_bestbuy:
+        retailers.append("bestbuy")
+    if include_target:
+        retailers.append("target")
+    if include_walmart:
+        retailers.append("walmart")
+    if include_gamestop:
+        retailers.append("gamestop")
+
+    if not retailers:
+        raise HTTPException(status_code=400, detail="Choose at least one retailer")
+
+    discovery = ProductDiscoveryService()
+    result = discovery.discover(
+        keyword=keyword,
+        retailers=retailers,
+        limit=max(1, min(limit_per_retailer, 12)),
+    )
+    return JSONResponse(
+        {
+            "errors": result.errors,
+            "results": [
+                {
+                    "retailer": c.retailer,
+                    "label": c.label,
+                    "identifier": {
+                        "type": c.identifier_type,
+                        "value": c.identifier_value,
+                    },
+                    "url": c.url,
+                }
+                for c in result.candidates
+            ]
+        }
+    )
 
 
 @app.post("/check-now")
@@ -124,16 +183,23 @@ def check_now(dry_run: bool = Form(default=True)) -> JSONResponse:
     service = StockCheckerService(config=config, dry_run=dry_run, headless=True)
     records = service.run_once()
 
+    checks = [
+        {
+            "retailer": r.retailer,
+            "label": r.label,
+            "store_id": r.store_id,
+            "store_name": r.store_name,
+            "status": r.status.value,
+            "item_key": r.item_key,
+        }
+        for r in records
+    ]
+    in_stock_count = sum(1 for r in checks if r["status"] == "in_stock")
     return JSONResponse(
         {
-            "checks": [
-                {
-                    "retailer": r.retailer,
-                    "label": r.label,
-                    "store_id": r.store_id,
-                    "status": r.status.value,
-                }
-                for r in records
-            ]
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "count": len(checks),
+            "in_stock_count": in_stock_count,
+            "checks": checks,
         }
     )

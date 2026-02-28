@@ -36,6 +36,12 @@ def main() -> None:
     args = parser.parse_args()
     configure_logging(args.verbose)
 
+    if args.command == "web":
+        import uvicorn
+
+        uvicorn.run("stockcheck.api:app", host=args.host, port=args.port, reload=False)
+        return
+
     service = build_service(
         config_path=args.config,
         dry_run=args.dry_run,
@@ -48,12 +54,6 @@ def main() -> None:
 
     if args.command == "run":
         service.run_forever()
-        return
-
-    if args.command == "web":
-        import uvicorn
-
-        uvicorn.run("stockcheck.api:app", host=args.host, port=args.port, reload=False)
         return
 
     raise RuntimeError(f"unsupported command: {args.command}")

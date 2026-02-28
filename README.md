@@ -12,6 +12,7 @@ Local Pokemon TCG stock checker for Best Buy, Target, Walmart, and GameStop with
 
 - CLI modes: one-shot and daemon (`stockcheck once`, `stockcheck run`)
 - Web UI (`stockcheck web`) to fill variables and trigger checks
+- Keyword-based product discovery in web UI (select products instead of writing JSON)
 - Transition-based alerts: only alerts on `OUT_OF_STOCK/UNKNOWN -> IN_STOCK`
 - Persistent SQLite state cache
 - ZIP geocoding via pluggable geocoder (default: Zippopotam)
@@ -54,7 +55,8 @@ stockcheck web --host 0.0.0.0 --port 8000
 1. Start server: `stockcheck web`
 2. Open `http://localhost:8000`
 3. Fill ZIP or lat/lon, radius, poll interval, webhook, and watchlist JSON.
-4. Click `Save Config` and then `Check Now (Dry Run)`.
+4. Use product keyword search, select items, then click `Save Config`.
+5. Click `Check Now (Dry Run)` to run and view live results on the page.
 
 ## Docker
 
