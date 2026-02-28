@@ -376,12 +376,16 @@ class TicketSearchService:
         date_from: str | None,
         date_to: str | None,
     ) -> str:
-        date_hint = ""
-        if date_from or date_to:
-            date_hint = f" {date_from or ''} {date_to or ''}".strip()
+        terms: list[str] = [query]
+        if zip_code:
+            terms.append(zip_code)
+        if date_from:
+            terms.append(date_from)
+        if date_to:
+            terms.append(date_to)
         # Public search URLs are more reliable with the core artist/event query only.
         del zip_code, radius_miles
-        q = quote_plus(f"{query} {date_hint}".strip())
+        q = quote_plus(" ".join(t for t in terms if t).strip())
 
         if source == "stubhub":
             return f"https://www.stubhub.com/search?search={q}"
@@ -427,7 +431,7 @@ class TicketSearchService:
             event_name=label,
             venue="",
             event_date=date_from or "",
-            city=zip_code,
+            city=zip_code or "",
             min_price=None,
             max_price=None,
             currency=None,

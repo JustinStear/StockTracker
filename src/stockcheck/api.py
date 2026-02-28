@@ -251,7 +251,7 @@ def check_now(dry_run: bool = Form(default=True)) -> JSONResponse:
 @app.post("/tickets/search")
 def tickets_search(
     query: str = Form(default=""),
-    zip_code: str = Form(default="21032"),
+    zip_code: str = Form(default=""),
     radius_miles: int = Form(default=50),
     date_from: str = Form(default=""),
     date_to: str = Form(default=""),
@@ -269,8 +269,6 @@ def tickets_search(
     limit: int = Form(default=30),
 ) -> JSONResponse:
     zip_value = zip_code.strip()
-    if not zip_value:
-        raise HTTPException(status_code=400, detail="ZIP code is required")
 
     parsed_max_price: float | None = None
     if max_price.strip():
