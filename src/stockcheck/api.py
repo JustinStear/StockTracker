@@ -135,6 +135,8 @@ def discover_products(
     include_target: bool = Form(default=True),
     include_walmart: bool = Form(default=True),
     include_gamestop: bool = Form(default=True),
+    include_amazon: bool = Form(default=False),
+    include_pokemoncenter: bool = Form(default=False),
     limit_per_retailer: int = Form(default=6),
 ) -> JSONResponse:
     retailers: list[str] = []
@@ -144,6 +146,10 @@ def discover_products(
         retailers.append("walmart")
     if include_gamestop:
         retailers.append("gamestop")
+    if include_amazon:
+        retailers.append("amazon")
+    if include_pokemoncenter:
+        retailers.append("pokemoncenter")
 
     if not retailers:
         raise HTTPException(status_code=400, detail="Choose at least one retailer")
@@ -166,6 +172,9 @@ def discover_products(
                         "value": c.identifier_value,
                     },
                     "url": c.url,
+                    "price": c.price,
+                    "currency": c.currency,
+                    "monitorable": c.monitorable,
                 }
                 for c in result.candidates
             ]

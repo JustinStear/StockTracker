@@ -222,6 +222,8 @@
           <label><input id="include_target" type="checkbox" checked />Target</label>
           <label><input id="include_walmart" type="checkbox" checked />Walmart</label>
           <label><input id="include_gamestop" type="checkbox" checked />GameStop</label>
+          <label><input id="include_amazon" type="checkbox" />Amazon</label>
+          <label><input id="include_pokemoncenter" type="checkbox" />Pokemon Center</label>
         </div>
 
         <div class="btns">
@@ -297,11 +299,19 @@
 
     function syncSelectedItems() {
       const checks = [...document.querySelectorAll('.result-check:checked')];
-      const selected = checks.map((c) => discovered[Number(c.dataset.idx)].watch_item);
+      const selected = checks
+        .map((c) => discovered[Number(c.dataset.idx)].watch_item)
+        .filter(Boolean);
       selectedItemsEl.value = JSON.stringify(selected);
       if (selected.length > 0) {
         manualJsonEl.value = JSON.stringify(selected, null, 2);
       }
+    }
+
+    function formatPrice(item) {
+      if (item.price === null || item.price === undefined) return 'N/A';
+      const currency = item.currency || 'USD';
+      return `${currency} ${Number(item.price).toFixed(2)}`;
     }
 
     function renderResults(items) {
@@ -311,20 +321,36 @@
         return;
       }
 
-      resultsEl.innerHTML = '';
-      items.forEach((item, idx) => {
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML = `
-          <input class="result-check" type="checkbox" data-idx="${idx}" checked />
-          <div>
-            <div><strong>${item.watch_item.label}</strong></div>
-            <div class="small">${item.watch_item.retailer} • ${item.watch_item.identifier.type}: ${item.watch_item.identifier.value}</div>
-            <div class="small"><a href="${item.url}" target="_blank" rel="noopener noreferrer">${item.url}</a></div>
-          </div>
+      const rows = items.map((item, idx) => {
+        const monitorCell = item.monitorable
+          ? `<input class="result-check" type="checkbox" data-idx="${idx}" checked />`
+          : '<span class="small">view only</span>';
+        return `
+          <tr>
+            <td>${monitorCell}</td>
+            <td><strong>${item.label}</strong></td>
+            <td>${formatPrice(item)}</td>
+            <td>${item.retailer}</td>
+            <td><a href="${item.url}" target="_blank" rel="noopener noreferrer">Open</a></td>
+          </tr>
         `;
-        resultsEl.appendChild(row);
-      });
+      }).join('');
+
+      resultsEl.innerHTML = `
+        <div class="small">Monitor checkboxes apply only to supported retailers (Target, Walmart, GameStop).</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Monitor</th>
+              <th>Product</th>
+              <th>Price</th>
+              <th>Store</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
 
       document.querySelectorAll('.result-check').forEach((el) => {
         el.addEventListener('change', syncSelectedItems);
@@ -397,18 +423,25 @@
         fd.set('include_target', document.getElementById('include_target').checked ? 'true' : 'false');
         fd.set('include_walmart', document.getElementById('include_walmart').checked ? 'true' : 'false');
         fd.set('include_gamestop', document.getElementById('include_gamestop').checked ? 'true' : 'false');
+        fd.set('include_amazon', document.getElementById('include_amazon').checked ? 'true' : 'false');
+        fd.set('include_pokemoncenter', document.getElementById('include_pokemoncenter').checked ? 'true' : 'false');
 
         const data = await postForm('/discover', fd);
         discovered = data.results.map((r) => ({
+          label: r.label,
+          retailer: r.retailer,
           url: r.url,
-          watch_item: {
+          price: r.price,
+          currency: r.currency,
+          monitorable: r.monitorable,
+          watch_item: r.monitorable ? {
             retailer: r.retailer,
             label: r.label,
             identifier: {
               type: r.identifier.type,
               value: r.identifier.value
             }
-          }
+          } : null
         }));
         renderResults(discovered);
         out.textContent = JSON.stringify({ found: discovered.length, errors: data.errors || [] }, null, 2);
