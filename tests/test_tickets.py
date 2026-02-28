@@ -142,3 +142,67 @@ def test_ticket_search_section_and_max_price_filters() -> None:
 
     assert len(result.results) == 1
     assert "102" in result.results[0].event_name
+
+
+def test_ticket_search_does_not_append_venue_to_provider_query() -> None:
+    svc = TicketSearchService()
+    seen_queries: list[str] = []
+
+    def fake_public(source, query, *args, **kwargs):
+        del source, args, kwargs
+        seen_queries.append(query)
+        return []
+
+    svc._search_public_provider = fake_public  # type: ignore[method-assign]
+
+    svc.search(
+        query="Kid Cudi",
+        zip_code="",
+        radius_miles=50,
+        date_from=None,
+        date_to=None,
+        event_id=None,
+        venue_query="Bristow, VA",
+        section_query=None,
+        max_price=None,
+        include_ticketmaster=True,
+        include_seatgeek=False,
+        include_stubhub=False,
+        include_vividseats=False,
+        include_tickpick=False,
+        include_livenation=False,
+        include_axs=False,
+        include_gametime=False,
+        limit=10,
+    )
+
+    assert seen_queries == ["Kid Cudi"]
+
+
+def test_ticket_search_keeps_search_links_when_venue_filter_set() -> None:
+    svc = TicketSearchService()
+    svc._choose_best_link = lambda source, query, primary_url: primary_url  # type: ignore[method-assign]
+
+    result = svc.search(
+        query="Kid Cudi",
+        zip_code="",
+        radius_miles=50,
+        date_from=None,
+        date_to=None,
+        event_id=None,
+        venue_query="Bristow,VA",
+        section_query=None,
+        max_price=None,
+        include_ticketmaster=True,
+        include_seatgeek=False,
+        include_stubhub=False,
+        include_vividseats=False,
+        include_tickpick=False,
+        include_livenation=False,
+        include_axs=False,
+        include_gametime=False,
+        limit=10,
+    )
+
+    assert len(result.results) == 1
+    assert result.results[0].url == "https://www.ticketmaster.com/search?q=Kid+Cudi"

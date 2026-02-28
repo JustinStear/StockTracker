@@ -63,7 +63,6 @@ class TicketSearchService:
         errors: list[str] = []
         venue_term = (venue_query or "").strip().lower()
         section_term = (section_query or "").strip().lower()
-        effective_query = " ".join(x for x in [cleaned_query, venue_term, section_term] if x).strip()
         event_id_only_mode = bool(cleaned_event_id and not cleaned_query)
 
         if include_ticketmaster:
@@ -86,7 +85,7 @@ class TicketSearchService:
                 results.extend(
                     self._search_public_provider(
                         "ticketmaster",
-                        effective_query or cleaned_query,
+                        cleaned_query,
                         zip_code,
                         radius_miles,
                         date_from,
@@ -99,7 +98,7 @@ class TicketSearchService:
             results.extend(
                 self._search_public_provider(
                     "seatgeek",
-                    effective_query or cleaned_query,
+                    cleaned_query,
                     zip_code,
                     radius_miles,
                     date_from,
@@ -124,7 +123,7 @@ class TicketSearchService:
             results.extend(
                 self._search_public_provider(
                     source=source,
-                    query=effective_query or cleaned_query,
+                    query=cleaned_query,
                     zip_code=zip_code,
                     radius_miles=radius_miles,
                     date_from=date_from,
@@ -135,9 +134,13 @@ class TicketSearchService:
 
         deduped = self._dedupe_results(results)
         if venue_term:
-            deduped = [r for r in deduped if self._matches_venue(r, venue_term)]
+            deduped = [
+                r for r in deduped if r.availability == "search_link" or self._matches_venue(r, venue_term)
+            ]
         if section_term:
-            deduped = [r for r in deduped if self._matches_section(r, section_term)]
+            deduped = [
+                r for r in deduped if r.availability == "search_link" or self._matches_section(r, section_term)
+            ]
         if max_price is not None:
             deduped = [r for r in deduped if r.min_price is None or r.min_price <= max_price]
         deduped.sort(key=lambda r: (r.min_price is None, r.min_price or float("inf"), r.event_date, r.source))
